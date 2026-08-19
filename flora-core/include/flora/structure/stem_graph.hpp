@@ -48,7 +48,10 @@ struct Bud {
     Vec3 direction = kUpAxis;
     BudType type = BudType::Apical;
     BudState state = BudState::Dormant;
+    // Step of creation or of the meristem's last shoot growth (moving a bud to
+    // a new tip renews it); dormancy age is measured against this.
     std::uint32_t creationStep = 0;
+    float rollAngle = 0.0f; // phyllotaxis spiral state of this meristem, radians
 };
 
 class StemGraph {

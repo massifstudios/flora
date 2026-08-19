@@ -16,9 +16,15 @@ ctest --test-dir build --output-on-failure
 
 ```sh
 ./build/flora-cli/flora version
-./build/flora-cli/flora diag 42     # diagnostic structure + invariant check
-./build/benchmarks/flora-bench      # benchmark suite (use a Release build)
+./build/flora-cli/flora presets                      # list built-in parameter presets
+./build/flora-cli/flora grow 42 30                   # grow one plant, print stats
+./build/flora-cli/flora grow 42 30 --preset excurrent --obj tree.obj
+./build/benchmarks/flora-bench                       # benchmark suite (Release build)
 ```
+
+`--obj` writes a skeleton preview (OBJ line elements) viewable in Blender or MeshLab —
+import with Z up. Solid branch meshes arrive with flora-geometry (M3); the interactive
+viewer is M8.
 
 ## Layout
 

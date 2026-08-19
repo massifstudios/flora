@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "bench.hpp"
+#include "flora/growth/simulation.hpp"
 #include "flora/rng/random.hpp"
 #include "flora/structure/stem_graph.hpp"
 #include "flora/version.hpp"
@@ -79,6 +80,42 @@ int main() {
             std::printf("unlikely\n");
         }
     });
+
+    {
+        // Single tree grown to the internode cap (~35 steps with defaults).
+        GrowthParameters parameters;
+        std::uint64_t grownInternodes = 0;
+        GrowthContext context;
+        registry.run("growth/single_tree_to_100k_internodes", 100000, "internode", [&] {
+            Plant plant;
+            plant.seed = 42;
+            plantSeedling(plant, parameters);
+            grow(plant, parameters, ConstantEnvironment{}, 40, context);
+            grownInternodes = plant.graph.internodeCount();
+        });
+        std::printf("  (single tree reached %llu internodes in 40 steps)\n",
+                    static_cast<unsigned long long>(grownInternodes));
+    }
+
+    {
+        // Sapling batch: many small plants, the forest-simulation shape.
+        GrowthParameters parameters;
+        constexpr std::uint64_t kSaplings = 1000;
+        GrowthContext context;
+        std::uint64_t totalInternodes = 0;
+        registry.run("growth/1000_saplings_15_steps", kSaplings, "plant", [&] {
+            totalInternodes = 0;
+            for (std::uint64_t i = 0; i < kSaplings; ++i) {
+                Plant plant;
+                plant.seed = 1000 + i;
+                plantSeedling(plant, parameters);
+                grow(plant, parameters, ConstantEnvironment{}, 15, context);
+                totalInternodes += plant.graph.internodeCount();
+            }
+        });
+        std::printf("  (saplings total %llu internodes)\n",
+                    static_cast<unsigned long long>(totalInternodes));
+    }
 
     registry.report();
 

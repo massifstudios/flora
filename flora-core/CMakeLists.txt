@@ -1,4 +1,5 @@
 add_library(flora-core
+    src/growth/simulation.cpp
     src/structure/stem_graph.cpp)
 
 add_library(flora::core ALIAS flora-core)
