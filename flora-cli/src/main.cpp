@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "flora/geometry/branch_mesh.hpp"
 #include "flora/growth/simulation.hpp"
 #include "flora/rng/random.hpp"
 #include "flora/structure/stem_graph.hpp"
@@ -66,6 +67,35 @@ bool writeSkeletonObj(const StemGraph& graph, const char* path) {
     return true;
 }
 
+// Solid branch mesh as OBJ (v/vt/vn/f), openable anywhere. Z up, meters.
+bool writeMeshObj(const Mesh& mesh, const char* path) {
+    std::FILE* file = std::fopen(path, "w");
+    if (file == nullptr) {
+        return false;
+    }
+    std::fprintf(file, "# flora branch mesh (Z up, meters)\n");
+    for (const Vec3& p : mesh.positions) {
+        std::fprintf(file, "v %.5f %.5f %.5f\n", static_cast<double>(p.x),
+                     static_cast<double>(p.y), static_cast<double>(p.z));
+    }
+    for (const Vec2& uv : mesh.uvs) {
+        std::fprintf(file, "vt %.5f %.5f\n", static_cast<double>(uv.x),
+                     static_cast<double>(uv.y));
+    }
+    for (const Vec3& n : mesh.normals) {
+        std::fprintf(file, "vn %.4f %.4f %.4f\n", static_cast<double>(n.x),
+                     static_cast<double>(n.y), static_cast<double>(n.z));
+    }
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        const unsigned long a = mesh.indices[i] + 1;
+        const unsigned long b = mesh.indices[i + 1] + 1;
+        const unsigned long c = mesh.indices[i + 2] + 1;
+        std::fprintf(file, "f %lu/%lu/%lu %lu/%lu/%lu %lu/%lu/%lu\n", a, a, a, b, b, b, c, c, c);
+    }
+    std::fclose(file);
+    return true;
+}
+
 int printUsage() {
     std::printf("flora %u.%u.%u (simulation revision %u)\n", kVersionMajor, kVersionMinor,
                 kVersionPatch, kSimulationRevision);
@@ -74,12 +104,14 @@ int printUsage() {
     std::printf("  flora presets                          list built-in parameter presets\n");
     std::printf("  flora grow <seed> <steps> [options]    grow one plant, print stats\n");
     std::printf("options:\n");
-    std::printf("    --preset <name>    parameter preset (default: decurrent)\n");
-    std::printf("    --obj <path>       write skeleton preview OBJ for Blender/MeshLab\n");
+    std::printf("    --preset <name>      parameter preset (default: decurrent)\n");
+    std::printf("    --obj <path>         write solid branch mesh OBJ (Blender/MeshLab)\n");
+    std::printf("    --skeleton <path>    write skeleton line OBJ (debug view)\n");
     return 1;
 }
 
-int runGrow(std::uint64_t seed, std::uint32_t steps, const Preset& preset, const char* objPath) {
+int runGrow(std::uint64_t seed, std::uint32_t steps, const Preset& preset, const char* objPath,
+            const char* skeletonPath) {
     Plant plant;
     plant.seed = seed;
     plantSeedling(plant, preset.parameters);
@@ -119,10 +151,30 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const Preset& preset, const
     std::printf("invariants:  %s\n", valid ? "ok" : errors.c_str());
 
     if (objPath != nullptr) {
-        if (writeSkeletonObj(plant.graph, objPath)) {
-            std::printf("preview:     wrote %s\n", objPath);
+        BranchMeshParameters meshParameters;
+        // Simulated radii arrive with M5 secondary thickening; until then the
+        // preview uses the pipe-model display heuristic.
+        meshParameters.radiusSource = RadiusSource::PipeModelDisplay;
+        Mesh mesh;
+        generateBranchMesh(plant.graph, meshParameters, mesh);
+        std::string meshErrors;
+        if (!validateMesh(mesh, &meshErrors)) {
+            std::printf("mesh:        INVALID: %s\n", meshErrors.c_str());
+            return 2;
+        }
+        if (writeMeshObj(mesh, objPath)) {
+            std::printf("mesh:        wrote %s (%zu vertices, %zu triangles)\n", objPath,
+                        mesh.vertexCount(), mesh.triangleCount());
         } else {
-            std::printf("preview:     FAILED to write %s\n", objPath);
+            std::printf("mesh:        FAILED to write %s\n", objPath);
+            return 2;
+        }
+    }
+    if (skeletonPath != nullptr) {
+        if (writeSkeletonObj(plant.graph, skeletonPath)) {
+            std::printf("skeleton:    wrote %s\n", skeletonPath);
+        } else {
+            std::printf("skeleton:    FAILED to write %s\n", skeletonPath);
             return 2;
         }
     }
@@ -152,6 +204,7 @@ int main(int argc, char** argv) {
         const std::uint32_t steps = static_cast<std::uint32_t>(std::stoul(argv[3]));
         const Preset* preset = &presets[1]; // decurrent default
         const char* objPath = nullptr;
+        const char* skeletonPath = nullptr;
         for (int i = 4; i < argc; ++i) {
             if (std::strcmp(argv[i], "--preset") == 0 && i + 1 < argc) {
                 const char* name = argv[++i];
@@ -167,11 +220,13 @@ int main(int argc, char** argv) {
                 }
             } else if (std::strcmp(argv[i], "--obj") == 0 && i + 1 < argc) {
                 objPath = argv[++i];
+            } else if (std::strcmp(argv[i], "--skeleton") == 0 && i + 1 < argc) {
+                skeletonPath = argv[++i];
             } else {
                 return printUsage();
             }
         }
-        return runGrow(seed, steps, *preset, objPath);
+        return runGrow(seed, steps, *preset, objPath, skeletonPath);
     }
     return printUsage();
 }

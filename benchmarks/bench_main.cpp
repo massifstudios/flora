@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "bench.hpp"
+#include "flora/geometry/branch_mesh.hpp"
 #include "flora/growth/simulation.hpp"
 #include "flora/rng/random.hpp"
 #include "flora/structure/stem_graph.hpp"
@@ -115,6 +116,31 @@ int main() {
         });
         std::printf("  (saplings total %llu internodes)\n",
                     static_cast<unsigned long long>(totalInternodes));
+    }
+
+    {
+        // Geometry from a full-size grown tree, both radius modes.
+        GrowthParameters growthParameters;
+        Plant plant;
+        plant.seed = 42;
+        plantSeedling(plant, growthParameters);
+        GrowthContext context;
+        grow(plant, growthParameters, ConstantEnvironment{}, 40, context);
+        const std::uint64_t internodes = plant.graph.internodeCount();
+
+        Mesh mesh;
+        BranchMeshParameters stored;
+        registry.run("geometry/branch_mesh_100k_stored", internodes, "internode",
+                     [&] { generateBranchMesh(plant.graph, stored, mesh); });
+        std::printf("  (stored radii: %zu vertices, %zu triangles)\n", mesh.vertexCount(),
+                    mesh.triangleCount());
+
+        BranchMeshParameters display;
+        display.radiusSource = RadiusSource::PipeModelDisplay;
+        registry.run("geometry/branch_mesh_100k_pipe_display", internodes, "internode",
+                     [&] { generateBranchMesh(plant.graph, display, mesh); });
+        std::printf("  (display radii: %zu vertices, %zu triangles)\n", mesh.vertexCount(),
+                    mesh.triangleCount());
     }
 
     registry.report();

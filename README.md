@@ -22,17 +22,19 @@ ctest --test-dir build --output-on-failure
 ./build/benchmarks/flora-bench                       # benchmark suite (Release build)
 ```
 
-`--obj` writes a skeleton preview (OBJ line elements) viewable in Blender or MeshLab —
-import with Z up. Solid branch meshes arrive with flora-geometry (M3); the interactive
+`--obj` writes a solid branch mesh (ring-swept tubes, normals, UVs) viewable in Blender or
+MeshLab — import with Z up. `--skeleton` writes a line-element debug OBJ. Until M5 simulates
+secondary thickening, preview radii use a pipe-model display heuristic. The interactive
 viewer is M8.
 
 ## Layout
 
 ```text
-flora-core/    simulation authority: structure, growth, species, environment, RNG
-flora-cli/     command-line generation and diagnostics
-tests/         doctest unit/property/regression tests
-benchmarks/    deterministic benchmark harness
+flora-core/      simulation authority: structure, growth, species, environment, RNG
+flora-geometry/  render geometry derived from structure (tubes, decimation, UVs)
+flora-cli/       command-line generation and diagnostics
+tests/           doctest unit/property/regression tests
+benchmarks/      deterministic benchmark harness
 ```
 
 Geometry, export, viewer, and engine integration modules arrive in later milestones

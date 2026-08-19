@@ -32,6 +32,7 @@ else()
 endif()
 
 add_subdirectory(flora-core)
+add_subdirectory(flora-geometry)
 
 if(FLORA_BUILD_CLI)
     add_subdirectory(flora-cli)
