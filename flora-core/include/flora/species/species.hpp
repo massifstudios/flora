@@ -62,11 +62,19 @@ struct SpeciesDefinition {
     SpeciesParameter branchAngle{{0.7853982f, 0.0f, 0.0f, 3.1415927f}, {}};
     SpeciesParameter branchAngleJitter{{0.0872665f, 0.0f, 0.0f, 3.1415927f}, {}};
     SpeciesParameter phyllotaxisAngle{{2.3999632f, 0.0f, 0.0f, 6.2831853f}, {}};
+    SpeciesParameter gravitropism{{0.08f, 0.0f, -1.0f, 1.0f}, {}};
+    SpeciesParameter phototropism{{0.05f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter gnarl{{0.06f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter thicknessGrowthFactor{{1.5e-6f, 0.0f, 0.0f, 1.0e-3f}, {}};
+    SpeciesParameter maintenanceCostPerVolume{{400.0f, 0.0f, 0.0f, 1.0e6f}, {}};
+    SpeciesParameter dropWeakBranchRatio{{1.0f, 0.0f, 0.0f, 100.0f}, {}};
+    SpeciesParameter maxShedFractionPerStep{{0.05f, 0.0f, 0.001f, 1.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;
     std::uint32_t lateralBudsPerMetamer = 1;
     std::uint32_t budDormancyLimit = 3;
+    std::uint32_t branchDecaySteps = 4; // 0: deadwood never removed
     std::uint32_t maxInternodes = 100000;
 
     bool operator==(const SpeciesDefinition&) const = default;

@@ -4,7 +4,8 @@ add_executable(flora-tests
     test_branch_mesh.cpp
     test_growth.cpp
     test_rng.cpp
-    test_stem_graph.cpp)
+    test_stem_graph.cpp
+    test_tropism_shedding.cpp)
 
 target_link_libraries(flora-tests PRIVATE flora::core flora::geometry flora_warnings)
 

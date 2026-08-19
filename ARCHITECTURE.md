@@ -96,16 +96,18 @@ Fixed phase order per step (changing order is an architecture change):
 
 ```text
 1 sample environment (light per bud, via active backend)
-2 accumulate energy rootward
-3 allocate resource tipward (apical-control weighted)
-4 bud fate (activate / suppress / kill by light+resource thresholds)
-5 shoot growth (elongate, append metamers, place lateral buds by phyllotaxis)
-6 orient (gravitropism, phototropism, gnarl)
+2 accumulate energy and wood volume rootward
+3 shed weak branches (production vs maintenance cost, before resources are spent)
+4 allocate resource tipward (apical-control weighted, surviving outlets only)
+5 bud fate (dormancy limits, activation thresholds)
+6 shoot growth with orientation (tropisms + gnarl steer each metamer;
+  phyllotactic lateral bud placement)
 7 secondary thickening (incremental pipe model, energy-weighted)
-8 shed (cost/production pruning, deadwood decay)
+8 deadwood decay (delayed removal of shed structure)
 9 age, mortality
 ```
 
+Shedding runs before allocation so no resource is wasted on doomed branches.
 Bending (cantilever + plastic integration) is a high-fidelity sub-phase of 6/7, classified
 APPROXIMATE, skipped below structural fidelity.
 

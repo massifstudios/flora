@@ -31,8 +31,10 @@ private:
     std::vector<std::uint32_t> budOffsets_; // CSR: buds grouped by internode
     std::vector<Index> budIndices_;
     std::vector<float> energy_;      // per internode, phase 2
-    std::vector<float> resource_;    // per internode, phase 3
-    std::vector<float> budResource_; // per bud, phase 3
+    std::vector<float> woodVolume_;  // per internode subtree, phase 2
+    std::vector<float> resource_;    // per internode, phase 4
+    std::vector<float> budResource_; // per bud, phase 4
+    std::vector<std::pair<float, Index>> shedCandidates_; // (viability, index), phase 3
 };
 
 // One fixed simulation step in the phase order of ARCHITECTURE.md §6

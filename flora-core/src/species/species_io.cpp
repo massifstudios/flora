@@ -20,7 +20,7 @@ struct FloatEntry {
     bool isAngle; // degrees in JSON, radians in memory
 };
 
-constexpr std::array<FloatEntry, 8> kFloatEntries = {{
+constexpr std::array<FloatEntry, 15> kFloatEntries = {{
     {"baseGrowthLength", &SpeciesDefinition::baseGrowthLength, false},
     {"baseGrowthThickness", &SpeciesDefinition::baseGrowthThickness, false},
     {"apicalControl", &SpeciesDefinition::apicalControl, false},
@@ -29,6 +29,13 @@ constexpr std::array<FloatEntry, 8> kFloatEntries = {{
     {"branchAngle", &SpeciesDefinition::branchAngle, true},
     {"branchAngleJitter", &SpeciesDefinition::branchAngleJitter, true},
     {"phyllotaxisAngle", &SpeciesDefinition::phyllotaxisAngle, true},
+    {"gravitropism", &SpeciesDefinition::gravitropism, false},
+    {"phototropism", &SpeciesDefinition::phototropism, false},
+    {"gnarl", &SpeciesDefinition::gnarl, false},
+    {"thicknessGrowthFactor", &SpeciesDefinition::thicknessGrowthFactor, false},
+    {"maintenanceCostPerVolume", &SpeciesDefinition::maintenanceCostPerVolume, false},
+    {"dropWeakBranchRatio", &SpeciesDefinition::dropWeakBranchRatio, false},
+    {"maxShedFractionPerStep", &SpeciesDefinition::maxShedFractionPerStep, false},
 }};
 
 struct IntegerEntry {
@@ -36,10 +43,11 @@ struct IntegerEntry {
     std::uint32_t SpeciesDefinition::* member;
 };
 
-constexpr std::array<IntegerEntry, 4> kIntegerEntries = {{
+constexpr std::array<IntegerEntry, 5> kIntegerEntries = {{
     {"maxMetamersPerShoot", &SpeciesDefinition::maxMetamersPerShoot},
     {"lateralBudsPerMetamer", &SpeciesDefinition::lateralBudsPerMetamer},
     {"budDormancyLimit", &SpeciesDefinition::budDormancyLimit},
+    {"branchDecaySteps", &SpeciesDefinition::branchDecaySteps},
     {"maxInternodes", &SpeciesDefinition::maxInternodes},
 }};
 

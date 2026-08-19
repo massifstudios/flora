@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cmath>
 
 #include "flora/math/rotation.hpp"
@@ -18,44 +19,64 @@ void plantSeedling(Plant& plant, const GrowthParameters& parameters) {
 
 namespace {
 
+constexpr float kPi = 3.1415927f;
+constexpr float kTwoPi = 6.2831853f;
+
 // Outlet bias: apical/continuation outlets receive λ, lateral outlets 1-λ.
 float outletBias(const GrowthParameters& parameters, bool continuesAxis) {
     return continuesAxis ? parameters.apicalControl : 1.0f - parameters.apicalControl;
 }
 
-// Appends a shoot of metamerCount internodes from the given bud, placing
-// lateral buds by phyllotaxis, then moves the bud to the new tip. Works on
-// indices only: addInternode/addBud may reallocate the underlying arrays.
-void growShoot(Plant& plant, const GrowthParameters& parameters, Index budIndex,
+Vec3 randomUnitVector(RandomStream& stream) {
+    const float z = stream.uniformFloat(-1.0f, 1.0f);
+    const float azimuth = stream.uniformFloat(0.0f, kTwoPi);
+    const float radial = std::sqrt(std::max(0.0f, 1.0f - z * z));
+    return {radial * std::cos(azimuth), radial * std::sin(azimuth), z};
+}
+
+// Appends a shoot of metamerCount internodes from the given bud, steering
+// each metamer by tropisms and gnarl and placing lateral buds by phyllotaxis,
+// then moves the bud to the new tip. Works on indices only: addInternode and
+// addBud may reallocate the underlying arrays.
+void growShoot(Plant& plant, const GrowthParameters& parameters,
+               const ConstantEnvironment& environment, Index budIndex,
                std::uint32_t metamerCount, std::uint32_t step) {
     StemGraph& graph = plant.graph;
 
     const Bud budBefore = graph.bud(budIndex);
     Index attachment = budBefore.internode;
-    const Vec3 shootDirection = budBefore.direction;
+    Vec3 direction = budBefore.direction;
     float rollAngle = budBefore.rollAngle;
     const bool startsLateralAxis = budBefore.type == BudType::Lateral;
 
     auto stream = RandomStream::derive(plant.seed, RngPurpose::ShootGrowth, budIndex, step);
 
     for (std::uint32_t metamer = 0; metamer < metamerCount; ++metamer) {
+        // Orientation: previous heading plus tropism pulls plus a random
+        // gnarl offset, renormalized. Draw order per metamer: gnarl first,
+        // then one branch-angle jitter per whorl bud.
+        const Vec3 steered = direction + kUpAxis * parameters.gravitropism +
+                             environment.lightDirection * parameters.phototropism +
+                             randomUnitVector(stream) * parameters.gnarl;
+        direction = steered.normalizedOr(direction);
+
         const AxisRelation relation = (metamer == 0 && startsLateralAxis)
                                           ? AxisRelation::Lateral
                                           : AxisRelation::Continuation;
-        attachment = graph.addInternode(attachment, relation, shootDirection,
+        attachment = graph.addInternode(attachment, relation, direction,
                                         parameters.baseGrowthLength,
                                         parameters.baseGrowthThickness, step);
 
         rollAngle += parameters.phyllotaxisAngle;
         const float whorlSpacing = parameters.lateralBudsPerMetamer > 0
-                                       ? 6.2831853f / static_cast<float>(parameters.lateralBudsPerMetamer)
+                                       ? kTwoPi / static_cast<float>(parameters.lateralBudsPerMetamer)
                                        : 0.0f;
         for (std::uint32_t whorl = 0; whorl < parameters.lateralBudsPerMetamer; ++whorl) {
             const float budRoll = rollAngle + whorlSpacing * static_cast<float>(whorl);
             const float tilt = parameters.branchAngle +
                                stream.uniformFloat(-parameters.branchAngleJitter,
                                                    parameters.branchAngleJitter);
-            const Vec3 budDirection = tiltedDirection(shootDirection, budRoll, tilt);
+            const Vec3 budDirection = tiltedDirection(direction, budRoll, tilt);
             const Index lateralBud = graph.addBud(attachment, BudType::Lateral, budDirection, step);
             graph.bud(lateralBud).rollAngle = budRoll;
         }
@@ -63,6 +84,7 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, Index budIndex,
 
     Bud& bud = graph.bud(budIndex); // fresh reference: array may have moved
     bud.internode = attachment;
+    bud.direction = direction;
     bud.type = BudType::Apical; // now the leader of its own axis
     bud.state = BudState::Active;
     bud.creationStep = step; // meristem renewed; dormancy clock resets
@@ -78,7 +100,9 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
     const std::size_t budCount = graph.budCount();
     const std::uint32_t step = plant.ageSteps + 1;
 
-    if (internodeCount == 0 || internodeCount >= parameters.maxInternodes) {
+    // The internode cap gates shoot creation (phase 6), not the whole step:
+    // shedding, thickening, and decay must continue on a full-size tree.
+    if (internodeCount == 0) {
         plant.ageSteps = step;
         return;
     }
@@ -113,13 +137,12 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         }
     }
 
-    // Phase 2 — accumulate energy rootward. Children always have higher
-    // indices than parents, so one descending pass suffices.
+    // Phase 2 — accumulate energy and live wood volume rootward. Children
+    // always have higher indices than parents, so one descending pass each.
     auto& energy = context.energy_;
     energy.assign(internodeCount, 0.0f);
     for (std::size_t i = 0; i < internodeCount; ++i) {
-        const float budCountHere =
-            static_cast<float>(budOffsets[i + 1] - budOffsets[i]);
+        const float budCountHere = static_cast<float>(budOffsets[i + 1] - budOffsets[i]);
         energy[i] = budCountHere * environment.light;
     }
     for (std::size_t i = internodeCount; i-- > 0;) {
@@ -129,20 +152,75 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         }
     }
 
-    // Phase 3 — allocate resource tipward, split at each internode across
-    // outlets (child internodes and attached buds) by bias-weighted energy.
+    auto& woodVolume = context.woodVolume_;
+    woodVolume.assign(internodeCount, 0.0f);
+    for (std::size_t i = 0; i < internodeCount; ++i) {
+        const Internode& node = graph.internode(static_cast<Index>(i));
+        if (node.alive) {
+            woodVolume[i] = kPi * node.radius * node.radius * node.length;
+        }
+    }
+    for (std::size_t i = internodeCount; i-- > 0;) {
+        const Internode& node = graph.internode(static_cast<Index>(i));
+        if (node.alive && node.parent != kInvalidIndex) {
+            woodVolume[node.parent] += woodVolume[i];
+        }
+    }
+
+    // Phase 3 — shed weak laterals before any resource is spent on them:
+    // production (collected energy) must cover the maintenance cost of the
+    // wood it supports. Shedding is rate-limited and worst-first so cost
+    // pressure produces gradual senescence, not mass die-offs.
+    if (parameters.dropWeakBranchRatio > 0.0f) {
+        auto& candidates = context.shedCandidates_;
+        candidates.clear();
+        for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+            const Internode& node = graph.internode(i);
+            if (!node.alive || node.parent == kInvalidIndex) {
+                continue;
+            }
+            if (node.branchOrder != graph.internode(node.parent).branchOrder + 1) {
+                continue; // only whole lateral branches shed, never mid-axis
+            }
+            const float cost = parameters.maintenanceCostPerVolume * woodVolume[i];
+            if (cost > 0.0f && energy[i] < parameters.dropWeakBranchRatio * cost) {
+                candidates.emplace_back(energy[i] / cost, i);
+            }
+        }
+        if (!candidates.empty()) {
+            std::sort(candidates.begin(), candidates.end()); // viability asc, index tie-break
+            const float budgetFraction =
+                std::clamp(parameters.maxShedFractionPerStep, 0.0f, 1.0f);
+            std::int64_t budget = std::max<std::int64_t>(
+                1, static_cast<std::int64_t>(static_cast<float>(internodeCount) * budgetFraction));
+            for (const auto& [viability, index] : candidates) {
+                if (budget <= 0) {
+                    break;
+                }
+                if (!graph.internode(index).alive) {
+                    continue; // an ancestor was shed first
+                }
+                budget -= graph.markSubtreeDead(index, step);
+            }
+            graph.sweepDeadBuds();
+        }
+    }
+
+    // Phase 4 — allocate resource tipward across surviving outlets (live
+    // child internodes and live attached buds) by bias-weighted energy.
     auto& resource = context.resource_;
     auto& budResource = context.budResource_;
     resource.assign(internodeCount, 0.0f);
     budResource.assign(budCount, 0.0f);
     for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
-        if (graph.internode(i).parent == kInvalidIndex) {
+        const Internode& node = graph.internode(i);
+        if (node.alive && node.parent == kInvalidIndex) {
             resource[i] = parameters.vigorScale * energy[i];
         }
     }
     for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
         const float available = resource[i];
-        if (available <= 0.0f) {
+        if (available <= 0.0f || !graph.internode(i).alive) {
             continue;
         }
         const Internode& node = graph.internode(i);
@@ -150,12 +228,17 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         float weightSum = 0.0f;
         for (Index child = node.firstChild; child != kInvalidIndex;
              child = graph.internode(child).nextSibling) {
-            const bool continues = graph.internode(child).branchOrder == node.branchOrder;
-            weightSum += outletBias(parameters, continues) * energy[child];
+            const Internode& childNode = graph.internode(child);
+            if (childNode.alive) {
+                const bool continues = childNode.branchOrder == node.branchOrder;
+                weightSum += outletBias(parameters, continues) * energy[child];
+            }
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Bud& bud = graph.bud(budIndices[slot]);
-            weightSum += outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+            if (bud.state != BudState::Dead) {
+                weightSum += outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+            }
         }
         if (weightSum <= 0.0f) {
             continue;
@@ -164,18 +247,23 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         const float scale = available / weightSum;
         for (Index child = node.firstChild; child != kInvalidIndex;
              child = graph.internode(child).nextSibling) {
-            const bool continues = graph.internode(child).branchOrder == node.branchOrder;
-            resource[child] += scale * outletBias(parameters, continues) * energy[child];
+            const Internode& childNode = graph.internode(child);
+            if (childNode.alive) {
+                const bool continues = childNode.branchOrder == node.branchOrder;
+                resource[child] += scale * outletBias(parameters, continues) * energy[child];
+            }
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Index budIndex = budIndices[slot];
             const Bud& bud = graph.bud(budIndex);
-            budResource[budIndex] =
-                scale * outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+            if (bud.state != BudState::Dead) {
+                budResource[budIndex] =
+                    scale * outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+            }
         }
     }
 
-    // Phase 4 — bud fate: dormant buds beyond the dormancy limit die.
+    // Phase 5 — bud fate: dormant buds beyond the dormancy limit die.
     for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
         Bud& bud = graph.bud(budIndex);
         if (bud.state == BudState::Dormant && step - bud.creationStep > parameters.budDormancyLimit) {
@@ -183,8 +271,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         }
     }
 
-    // Phase 5 — shoot growth. Only buds that existed at step start grow;
-    // additions during the loop are next step's population.
+    // Phase 6 — shoot growth with tropism steering. Only buds that existed at
+    // step start grow; additions during the loop are next step's population.
     for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
         {
             const Bud& bud = graph.bud(budIndex);
@@ -206,7 +294,26 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
             graph.bud(budIndex).state = BudState::Dormant;
             continue;
         }
-        growShoot(plant, parameters, budIndex, metamerCount, step);
+        growShoot(plant, parameters, environment, budIndex, metamerCount, step);
+    }
+
+    // Phase 7 — secondary thickening: incremental pipe model. Cross-section
+    // area grows with the energy collected through this internode (pre-growth
+    // snapshot); new metamers from this step keep their initial radius.
+    if (parameters.thicknessGrowthFactor > 0.0f) {
+        for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+            Internode& node = graph.internode(i);
+            if (node.alive && energy[i] > 0.0f) {
+                const float area =
+                    kPi * node.radius * node.radius + parameters.thicknessGrowthFactor * energy[i];
+                node.radius = std::sqrt(area / kPi);
+            }
+        }
+    }
+
+    // Phase 8 — deadwood decay: shed branches disappear after the delay.
+    if (graph.deadInternodeCount() > 0 && parameters.branchDecaySteps > 0) {
+        graph.removeDecayed(step, parameters.branchDecaySteps);
     }
 
     // Phase 9 — aging.

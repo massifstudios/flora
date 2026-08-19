@@ -3,36 +3,36 @@
 Every milestone leaves the project building, tested, and runnable. Current phase is marked.
 Scope rule: implement only the current milestone (see `CLAUDE.md`).
 
-## M0 — Repository, build, test, benchmark harness  ✅ (this milestone, in progress)
+## M0 — Repository, build, test, benchmark harness  ✅
 
 CMake workspace (C++20, warnings-as-errors for project code), `flora-core` library skeleton,
 doctest test runner, custom benchmark harness executable, `flora-cli` stub, `.gitignore`,
 CI-ready `cmake -S . -B build && cmake --build build && ctest`.
 
-## M1 — Structural tree graph + deterministic RNG  ✅ (this milestone, in progress)
+## M1 — Structural tree graph + deterministic RNG  ✅
 
 `Index`-based metamer/bud arrays (`StemGraph`), parent/child/sibling links, order-preserving
 prune + compaction with remap, derived positions, `validate()` invariants; hash-based RNG
 streams with golden-value tests; unit/property tests; graph construction/traversal/prune
 benchmarks; memory-per-node reporting.
 
-## M2 — Deterministic growth simulation (minimal)
+## M2 — Deterministic growth simulation (minimal)  ✅
 
 Fixed-step growth loop with phases 2–5,9 of ARCHITECTURE §6 on a constant-light environment:
 bud fate, shoot growth, phyllotactic lateral placement, aging. Same-seed and structural
 regression tests. Growth benchmark (single tree to N years).
 
-## M3 — Basic branch geometry
+## M3 — Basic branch geometry  ✅
 
 flora-geometry: ring-swept tubes, radius decimation, normals/UVs; deterministic mesh tests
 (finite, valid indices, bounds); OBJ dump in flora-cli for eyeballing. Geometry benchmark.
 
-## M4 — Species definitions
+## M4 — Species definitions  ✅
 
 JSON schema v1 with distributions and over-age curves; species loader; two contrasting
 presets; sampled-parameter determinism tests; schema version round-trip.
 
-## M5 — Tropisms, thickening, pruning
+## M5 — Tropisms, thickening, pruning  ✅
 
 Phases 6–8: gravitropism/phototropism/gnarl, incremental pipe-model thickening,
 cost/production shedding + deadwood decay. Botanical behavior tests (direction bias,

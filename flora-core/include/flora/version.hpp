@@ -10,6 +10,6 @@ inline constexpr std::uint32_t kVersionPatch = 0;
 
 // Bumped whenever a change alters deterministic simulation output for identical
 // inputs. Serialized data records this value.
-inline constexpr std::uint32_t kSimulationRevision = 1;
+inline constexpr std::uint32_t kSimulationRevision = 2;
 
 } // namespace flora

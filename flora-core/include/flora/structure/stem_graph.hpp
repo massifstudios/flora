@@ -39,6 +39,7 @@ struct Internode {
     float length = 0.0f;      // meters
     float radius = 0.0f;      // meters, at base
     std::uint32_t creationStep = 0;
+    std::uint32_t deathStep = 0; // step markSubtreeDead ran; meaningful when !alive
     std::uint16_t branchOrder = 0;
     bool alive = true;
 };
@@ -69,10 +70,11 @@ public:
 
     // Pruning -----------------------------------------------------------------
 
-    // Marks the internode and its whole subtree dead. Returns the number of
-    // internodes newly marked. Buds are not touched; call sweepDeadBuds() once
-    // after a batch of prunes (single O(buds) pass instead of one per prune).
-    std::uint32_t markSubtreeDead(Index internode);
+    // Marks the internode and its whole subtree dead, recording deathStep.
+    // Returns the number of internodes newly marked. Buds are not touched;
+    // call sweepDeadBuds() once after a batch of prunes (single O(buds) pass
+    // instead of one per prune).
+    std::uint32_t markSubtreeDead(Index internode, std::uint32_t deathStep = 0);
 
     // Marks buds attached to dead internodes dead. Returns the number swept.
     // Required before validate() after pruning.
@@ -81,6 +83,11 @@ public:
     // Removes dead internodes and dead/orphaned buds, preserving relative
     // order and remapping all indices. Invalidates outstanding indices.
     void compact();
+
+    // Like compact(), but keeps deadwood younger than decayDelaySteps
+    // (currentStep - deathStep < decayDelaySteps), so shed branches linger as
+    // structure before disappearing.
+    void removeDecayed(std::uint32_t currentStep, std::uint32_t decayDelaySteps);
 
     std::uint32_t deadInternodeCount() const { return deadInternodes_; }
 
@@ -110,6 +117,9 @@ public:
 
 private:
     void appendChild(Index parent, Index child);
+
+    template <typename KeepPredicate>
+    void compactKeeping(KeepPredicate&& keep); // defined in stem_graph.cpp
 
     std::vector<Internode> internodes_;
     std::vector<Bud> buds_;

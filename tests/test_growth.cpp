@@ -211,5 +211,5 @@ TEST_CASE("regression: pinned structure for default parameters") {
     for (const Vec3& tip : tips) {
         height = std::max(height, tip.z);
     }
-    CHECK(height == doctest::Approx(12.950004f).epsilon(0.001));
+    CHECK(height == doctest::Approx(12.924929f).epsilon(0.001));
 }

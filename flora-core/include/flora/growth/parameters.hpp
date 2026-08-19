@@ -2,11 +2,13 @@
 
 #include <cstdint>
 
+#include "flora/math/vec3.hpp"
+
 namespace flora {
 
-// Growth control surface for the M2 simulation loop. Becomes the data-driven
-// species schema in M4 (distributions + curves, JSON, versioned); the fields
-// here define the vocabulary. Angles in radians, lengths in meters.
+// Growth control surface materialized per plant and step from a species
+// definition (flora/species/species.hpp). Angles in radians, lengths in
+// meters.
 struct GrowthParameters {
     // Shoot growth
     float baseGrowthLength = 0.35f;    // metamer length under ideal conditions
@@ -24,17 +26,41 @@ struct GrowthParameters {
     float phyllotaxisAngle = 2.3999632f;  // golden angle, 137.5 deg
     std::uint32_t lateralBudsPerMetamer = 1; // whorls
 
+    // Orientation: per-metamer direction blending weights
+    float gravitropism = 0.08f;  // pull toward +Z (negative droops)
+    float phototropism = 0.05f;  // pull toward the environment light direction
+    float gnarl = 0.06f;         // random per-metamer offset magnitude
+
+    // Secondary thickening: cross-section area gain per unit collected energy
+    // per step (incremental pipe model)
+    float thicknessGrowthFactor = 1.5e-6f;
+
+    // Shedding: a lateral branch is shed when its collected energy divided by
+    // (maintenanceCostPerVolume × subtree wood volume) falls below the ratio.
+    float maintenanceCostPerVolume = 400.0f; // energy units per m^3 per step
+    float dropWeakBranchRatio = 1.0f;        // 0 disables shedding
+    // At most this fraction of the tree sheds per step, worst branches first.
+    // Spreads correction over time instead of mass die-offs when maintenance
+    // cost catches up with capped energy (stabilizer until M6 light limits
+    // energy naturally).
+    float maxShedFractionPerStep = 0.05f;
+
     // Bud lifecycle
     std::uint32_t budDormancyLimit = 3; // dormant steps before a bud dies
+
+    // Deadwood: shed branches linger this many steps before removal
+    std::uint32_t branchDecaySteps = 4;
 
     // Hard caps (part of the determinism key; see ARCHITECTURE.md §14)
     std::uint32_t maxInternodes = 100000;
 };
 
 // Placeholder environment until the M6 backend interface: every live bud
-// receives the same light level each step.
+// receives the same light level each step, and phototropism steers toward a
+// single global light direction.
 struct ConstantEnvironment {
     float light = 1.0f;
+    Vec3 lightDirection{0.0f, 0.0f, 1.0f}; // unit vector toward the light
 };
 
 } // namespace flora

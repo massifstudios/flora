@@ -124,10 +124,7 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& sp
     std::printf("invariants:  %s\n", valid ? "ok" : errors.c_str());
 
     if (objPath != nullptr) {
-        BranchMeshParameters meshParameters;
-        // Simulated radii arrive with M5 secondary thickening; until then the
-        // preview uses the pipe-model display heuristic.
-        meshParameters.radiusSource = RadiusSource::PipeModelDisplay;
+        BranchMeshParameters meshParameters; // stored radii: simulated by M5 thickening
         Mesh mesh;
         generateBranchMesh(plant.graph, meshParameters, mesh);
         std::string meshErrors;

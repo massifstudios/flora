@@ -17,9 +17,16 @@
     "branchAngle": {"mean": 38.0, "stddev": 6.0, "min": 15.0, "max": 75.0},
     "branchAngleJitter": 5.0,
     "phyllotaxisAngle": 137.5,
+    "gravitropism": {"mean": 0.06, "stddev": 0.01, "min": -0.5, "max": 0.5},
+    "phototropism": 0.05,
+    "gnarl": {"mean": 0.09, "stddev": 0.015, "min": 0.0, "max": 0.4},
+    "thicknessGrowthFactor": 1.5e-6,
+    "maintenanceCostPerVolume": 400.0,
+    "dropWeakBranchRatio": 1.0,
     "maxMetamersPerShoot": 3,
     "lateralBudsPerMetamer": 1,
     "budDormancyLimit": 3,
+    "branchDecaySteps": 5,
     "maxInternodes": 100000
   }
 }

@@ -53,10 +53,22 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     parameters.branchAngleJitter =
         species.branchAngleJitter.value(stream.normal(0.0f, 1.0f), age);
     parameters.phyllotaxisAngle = species.phyllotaxisAngle.value(stream.normal(0.0f, 1.0f), age);
+    parameters.gravitropism = species.gravitropism.value(stream.normal(0.0f, 1.0f), age);
+    parameters.phototropism = species.phototropism.value(stream.normal(0.0f, 1.0f), age);
+    parameters.gnarl = species.gnarl.value(stream.normal(0.0f, 1.0f), age);
+    parameters.thicknessGrowthFactor =
+        species.thicknessGrowthFactor.value(stream.normal(0.0f, 1.0f), age);
+    parameters.maintenanceCostPerVolume =
+        species.maintenanceCostPerVolume.value(stream.normal(0.0f, 1.0f), age);
+    parameters.dropWeakBranchRatio =
+        species.dropWeakBranchRatio.value(stream.normal(0.0f, 1.0f), age);
+    parameters.maxShedFractionPerStep =
+        species.maxShedFractionPerStep.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;
     parameters.budDormancyLimit = species.budDormancyLimit;
+    parameters.branchDecaySteps = species.branchDecaySteps;
     parameters.maxInternodes = species.maxInternodes;
     return parameters;
 }

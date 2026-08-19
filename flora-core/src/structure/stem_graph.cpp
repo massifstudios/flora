@@ -66,7 +66,7 @@ void StemGraph::reserve(std::size_t internodeCount, std::size_t budCount) {
     buds_.reserve(budCount);
 }
 
-std::uint32_t StemGraph::markSubtreeDead(Index internode) {
+std::uint32_t StemGraph::markSubtreeDead(Index internode, std::uint32_t deathStep) {
     assert(internode < internodes_.size());
 
     std::uint32_t marked = 0;
@@ -78,6 +78,7 @@ std::uint32_t StemGraph::markSubtreeDead(Index internode) {
         Internode& node = internodes_[current];
         if (node.alive) {
             node.alive = false;
+            node.deathStep = deathStep;
             ++marked;
         }
         for (Index child = node.firstChild; child != kInvalidIndex;
@@ -101,25 +102,40 @@ std::uint32_t StemGraph::sweepDeadBuds() {
 }
 
 void StemGraph::compact() {
-    // Order-preserving compaction: remap[i] is the new index of live internode
-    // i. Because relative order is preserved, parent < child and index-ordered
-    // sibling lists survive; child links are rebuilt in index order.
+    compactKeeping([](const Internode& node) { return node.alive; });
+}
+
+void StemGraph::removeDecayed(std::uint32_t currentStep, std::uint32_t decayDelaySteps) {
+    compactKeeping([&](const Internode& node) {
+        return node.alive || currentStep - node.deathStep < decayDelaySteps;
+    });
+}
+
+template <typename KeepPredicate>
+void StemGraph::compactKeeping(KeepPredicate&& keep) {
+    // Order-preserving compaction: remap[i] is the new index of each kept
+    // internode i. Because relative order is preserved, parent < child and
+    // index-ordered sibling lists survive; child links are rebuilt in index
+    // order.
     std::vector<Index> remap(internodes_.size(), kInvalidIndex);
-    std::size_t liveCount = 0;
+    std::size_t keptCount = 0;
     for (std::size_t i = 0; i < internodes_.size(); ++i) {
-        if (internodes_[i].alive) {
-            remap[i] = static_cast<Index>(liveCount);
-            ++liveCount;
+        if (keep(internodes_[i])) {
+            remap[i] = static_cast<Index>(keptCount);
+            ++keptCount;
         }
     }
 
     std::vector<Internode> liveInternodes;
-    liveInternodes.reserve(liveCount);
+    liveInternodes.reserve(keptCount);
     for (std::size_t i = 0; i < internodes_.size(); ++i) {
-        if (!internodes_[i].alive) {
+        if (remap[i] == kInvalidIndex) {
             continue;
         }
         Internode node = internodes_[i];
+        // A kept node's parent is always kept: children die no later than the
+        // subtree root that killed them, so they never outlast it.
+        assert(node.parent == kInvalidIndex || remap[node.parent] != kInvalidIndex);
         node.parent = node.parent == kInvalidIndex ? kInvalidIndex : remap[node.parent];
         node.firstChild = kInvalidIndex;
         node.nextSibling = kInvalidIndex;
@@ -151,6 +167,11 @@ void StemGraph::compact() {
     internodes_ = std::move(liveInternodes);
     buds_ = std::move(liveBuds);
     deadInternodes_ = 0;
+    for (const Internode& node : internodes_) {
+        if (!node.alive) {
+            ++deadInternodes_;
+        }
+    }
 }
 
 void StemGraph::computeTipPositions(std::vector<Vec3>& tipPositions) const {
