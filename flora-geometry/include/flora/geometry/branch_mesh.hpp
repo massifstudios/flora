@@ -26,6 +26,11 @@ struct BranchMeshParameters {
     float uvLengthScale = 1.0f;             // meters of axis length per V repeat
     RadiusSource radiusSource = RadiusSource::Stored;
     float displayRadiusExponent = 2.8f;
+    // Stems thinner than this (and everything beyond them) are not swept.
+    // Set it to TwigCardParameters::maxBearingRadius when foliage cards stand
+    // in for the twigs: the card texture already contains that wood. 0 meshes
+    // every live stem.
+    float cullBelowRadius = 0.0f;
 };
 
 // Sweeps every live axis of the graph into a tube: one ring per internode

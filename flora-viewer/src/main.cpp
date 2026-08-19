@@ -3,10 +3,12 @@
 // OpenGL with client-side arrays — because the viewer is a diagnostic tool,
 // not a renderer.
 //
-//   flora-viewer <seed> <steps> [--species file.json] [--shade voxel|raycast|off]
+//   flora-viewer <seed> <steps> [--species file.json] [--materials file.json]
+//                               [--shade voxel|raycast|off]
 //
 //   1..5     render mode: solid / orders / light / buds / vigor
 //   , .      step back / forward (re-simulates deterministically)
+//   c        foliage: twig cards (branchlets unmeshed) or leaf clusters
 //   drag     orbit    wheel zoom    right-drag pan
 //   escape   quit
 
@@ -23,8 +25,14 @@
 #include <string>
 #include <vector>
 
+#ifdef FLORA_VIEWER_PNG
+#include <png.h>
+#endif
+
 #include "flora/geometry/branch_mesh.hpp"
+#include "flora/geometry/foliage_cards.hpp"
 #include "flora/geometry/foliage_mesh.hpp"
+#include "flora/geometry/material.hpp"
 #include "flora/growth/simulation.hpp"
 #include "flora/species/species.hpp"
 #include "flora/species/species_io.hpp"
@@ -57,6 +65,46 @@ Color lightColor(float light) {
     return {0.15f + 0.85f * t, 0.15f + 0.75f * t, 0.35f * (1.0f - t) + 0.10f};
 }
 
+// Textures are diagnostic dressing: colour maps only. Normal and roughness
+// maps are carried by the material set for exporters and engines, which is
+// where they can actually be shaded; fixed-function OpenGL cannot use them.
+GLuint uploadTexture(const std::string& path) {
+    if (path.empty()) {
+        return 0;
+    }
+#ifdef FLORA_VIEWER_PNG
+    png_image image{};
+    image.version = PNG_IMAGE_VERSION;
+    if (png_image_begin_read_from_file(&image, path.c_str()) == 0) {
+        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), image.message);
+        return 0;
+    }
+    image.format = PNG_FORMAT_RGBA;
+    std::vector<png_byte> pixels(PNG_IMAGE_SIZE(image));
+    if (png_image_finish_read(&image, nullptr, pixels.data(), 0, nullptr) == 0) {
+        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), image.message);
+        png_image_free(&image);
+        return 0;
+    }
+
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(image.width),
+                 static_cast<GLsizei>(image.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    std::printf("texture: %s (%ux%u)\n", path.c_str(), image.width, image.height);
+    return texture;
+#else
+    std::fprintf(stderr, "texture %s ignored: viewer built without libpng\n", path.c_str());
+    return 0;
+#endif
+}
+
 // Column-major 4x4 helpers for the fixed-function matrix stack.
 void loadPerspective(float fovYRadians, float aspect, float nearZ, float farZ) {
     const float f = 1.0f / std::tan(fovYRadians * 0.5f);
@@ -85,11 +133,14 @@ struct ViewerState {
     std::uint32_t targetSteps = 30;
     std::uint32_t currentSteps = 0;
     SpeciesDefinition species;
+    MaterialSet materials;
     ShadeModel shadeModel = ShadeModel::VoxelPropagation;
 
     Plant plant;
     GrowthContext context;
 
+    bool useCards = true;
+    std::vector<TwigCard> cards;
     Mesh barkMesh;
     Mesh leafMesh;
     std::vector<Color> barkColors;
@@ -149,10 +200,23 @@ void rebuildStructures(ViewerState& state) {
     computeFoliagePlacement(graph, parameters, state.tipPositions, state.clusters);
 
     BranchMeshParameters barkParameters;
+    barkParameters.uvLengthScale = state.materials.barkUvLengthScale;
+    if (state.useCards) {
+        TwigCardParameters cardParameters;
+        cardParameters.maxBearingRadius = parameters.leafMaxBearingRadius;
+        cardParameters.aspect = state.materials.foliageAspect;
+        cardParameters.pivotU = state.materials.foliagePivotU;
+        cardParameters.seed = state.seed;
+        barkParameters.cullBelowRadius = cardParameters.maxBearingRadius;
+        buildTwigCards(graph, state.clusters, state.tipPositions, cardParameters, state.cards);
+        generateTwigCardMesh(state.cards, cardParameters, state.leafMesh);
+    } else {
+        state.cards.clear();
+        FoliageMeshParameters leafParameters;
+        leafParameters.seed = state.seed;
+        generateFoliageMesh(state.clusters, leafParameters, state.leafMesh);
+    }
     generateBranchMesh(graph, barkParameters, state.barkMesh);
-    FoliageMeshParameters leafParameters;
-    leafParameters.seed = state.seed;
-    generateFoliageMesh(state.clusters, leafParameters, state.leafMesh);
 
     // Skeleton lines with per-mode colors.
     std::vector<float> lightPerInternode;
@@ -218,9 +282,15 @@ void rebuildStructures(ViewerState& state) {
     state.structuresDirty = false;
 }
 
-void drawMesh(const Mesh& mesh, const std::vector<Color>& colors) {
+void drawMesh(const Mesh& mesh, const std::vector<Color>& colors, GLuint texture = 0) {
     if (mesh.vertexCount() == 0) {
         return;
+    }
+    if (texture != 0) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+        glTexCoordPointer(2, GL_FLOAT, 0, mesh.uvs.data());
     }
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_NORMAL_ARRAY);
@@ -235,21 +305,25 @@ void drawMesh(const Mesh& mesh, const std::vector<Color>& colors) {
     glDisableClientState(GL_COLOR_ARRAY);
     glDisableClientState(GL_NORMAL_ARRAY);
     glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDisable(GL_TEXTURE_2D);
 }
 
-void drawMeshUniform(const Mesh& mesh, Color color) {
-    glColor3f(color.r, color.g, color.b);
+// Cards are cut-outs: the texture's alpha decides the silhouette, so they draw
+// with an alpha test rather than blending (order-independent, depth-correct).
+void drawFoliage(const Mesh& mesh, Color tint, GLuint texture, float alphaCutoff) {
     if (mesh.vertexCount() == 0) {
         return;
     }
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_NORMAL_ARRAY);
-    glVertexPointer(3, GL_FLOAT, 0, mesh.positions.data());
-    glNormalPointer(GL_FLOAT, 0, mesh.normals.data());
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indices.size()), GL_UNSIGNED_INT,
-                   mesh.indices.data());
-    glDisableClientState(GL_NORMAL_ARRAY);
-    glDisableClientState(GL_VERTEX_ARRAY);
+    glColor3f(tint.r, tint.g, tint.b);
+    if (texture != 0) {
+        glEnable(GL_ALPHA_TEST);
+        glAlphaFunc(GL_GREATER, alphaCutoff);
+    }
+    static const std::vector<Color> noColors;
+    drawMesh(mesh, noColors, texture);
+    glDisable(GL_ALPHA_TEST);
 }
 
 void drawLines(const std::vector<Vec3>& positions, const std::vector<Color>& colors) {
@@ -290,12 +364,14 @@ void updateWindowTitle(SDL_Window* window, const ViewerState& state) {
     case RenderMode::Vigor: modeName = "vigor"; break;
     default: break;
     }
-    char title[256];
+    char title[320];
     std::snprintf(title, sizeof(title),
-                  "flora — %s | seed %llu | step %u/%u | %zu internodes | %zu clusters | [%s]",
+                  "flora — %s | seed %llu | step %u/%u | %zu internodes | %zu %s | %zu tris | [%s]",
                   state.species.name.c_str(), static_cast<unsigned long long>(state.seed),
                   state.currentSteps, state.targetSteps, state.plant.graph.internodeCount(),
-                  state.clusters.size(), modeName);
+                  state.useCards ? state.cards.size() : state.clusters.size(),
+                  state.useCards ? "twig cards" : "leaf clusters",
+                  state.barkMesh.triangleCount() + state.leafMesh.triangleCount(), modeName);
     SDL_SetWindowTitle(window, title);
 }
 
@@ -317,6 +393,12 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "invalid species file %s: %s\n", argv[i], error.c_str());
                 return 1;
             }
+        } else if (std::strcmp(argv[i], "--materials") == 0 && i + 1 < argc) {
+            std::string error;
+            if (!loadMaterialSetFromFile(argv[++i], state.materials, &error)) {
+                std::fprintf(stderr, "%s\n", error.c_str());
+                return 1;
+            }
         } else if (std::strcmp(argv[i], "--shade") == 0 && i + 1 < argc) {
             const char* mode = argv[++i];
             if (std::strcmp(mode, "off") == 0) {
@@ -327,7 +409,7 @@ int main(int argc, char** argv) {
         } else {
             std::fprintf(stderr,
                          "usage: flora-viewer <seed> <steps> [--species file.json] "
-                         "[--shade voxel|raycast|off]\n");
+                         "[--materials file.json] [--shade voxel|raycast|off]\n");
             return 1;
         }
     }
@@ -364,6 +446,12 @@ int main(int argc, char** argv) {
     glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, 1);
     glEnable(GL_NORMALIZE);
 
+    const GLuint barkTexture = uploadTexture(state.materials.bark.color);
+    const GLuint foliageTexture = uploadTexture(state.materials.foliage.color);
+    if (barkTexture != 0 || foliageTexture != 0) {
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    }
+
     float yaw = 0.6f;
     float pitch = 0.35f;
     float distance = 40.0f;
@@ -387,6 +475,10 @@ int main(int argc, char** argv) {
                 case SDLK_3: state.mode = RenderMode::Light; state.structuresDirty = true; break;
                 case SDLK_4: state.mode = RenderMode::Buds; state.structuresDirty = true; break;
                 case SDLK_5: state.mode = RenderMode::Vigor; state.structuresDirty = true; break;
+                case SDLK_C:
+                    state.useCards = !state.useCards;
+                    state.structuresDirty = true;
+                    break;
                 case SDLK_COMMA:
                     if (state.currentSteps > 0) {
                         simulateTo(state, state.currentSteps - 1);
@@ -470,8 +562,11 @@ int main(int argc, char** argv) {
 
         if (state.mode == RenderMode::Solid) {
             glEnable(GL_LIGHTING);
-            drawMesh(state.barkMesh, state.barkColors);
-            drawMeshUniform(state.leafMesh, {0.24f, 0.55f, 0.20f});
+            drawMesh(state.barkMesh, state.barkColors, barkTexture);
+            const Color foliageTint =
+                foliageTexture != 0 ? Color{1.0f, 1.0f, 1.0f} : Color{0.24f, 0.55f, 0.20f};
+            drawFoliage(state.leafMesh, foliageTint, foliageTexture,
+                        state.materials.foliageAlphaCutoff);
         } else {
             drawLines(state.linePositions, state.lineColors);
             drawPoints(state.pointPositions, state.pointColors);

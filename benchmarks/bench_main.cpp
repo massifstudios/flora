@@ -3,6 +3,7 @@
 
 #include "bench.hpp"
 #include "flora/geometry/branch_mesh.hpp"
+#include "flora/geometry/foliage_cards.hpp"
 #include "flora/geometry/foliage_mesh.hpp"
 #include "flora/growth/simulation.hpp"
 #include "flora/structure/foliage.hpp"
@@ -228,6 +229,30 @@ int main() {
                      [&] { generateFoliageMesh(clusters, foliageParameters, leaves); });
         std::printf("  (foliage: %zu vertices, %zu triangles)\n", leaves.vertexCount(),
                     leaves.triangleCount());
+
+        // Botanical LOD: clusters merged into twig cards, with the branchlets
+        // they stand in for left unmeshed.
+        TwigCardParameters cardParameters;
+        cardParameters.maxBearingRadius = growthParameters.leafMaxBearingRadius;
+        cardParameters.seed = plant.seed;
+        std::vector<TwigCard> cards;
+        registry.run("foliage/twig_card_build", clusters.size(), "cluster", [&] {
+            buildTwigCards(plant.graph, clusters, tips, cardParameters, cards);
+        });
+        Mesh cardMesh;
+        registry.run("foliage/twig_card_mesh", cards.size(), "card",
+                     [&] { generateTwigCardMesh(cards, cardParameters, cardMesh); });
+
+        BranchMeshParameters carded = stored;
+        carded.cullBelowRadius = cardParameters.maxBearingRadius;
+        Mesh cardedBranches;
+        registry.run("geometry/branch_mesh_100k_twig_culled", internodes, "internode",
+                     [&] { generateBranchMesh(plant.graph, carded, cardedBranches); });
+        std::printf("  (twig cards: %zu cards for %zu clusters; carded tree %zu triangles vs "
+                    "%zu full)\n",
+                    cards.size(), clusters.size(),
+                    cardedBranches.triangleCount() + cardMesh.triangleCount(),
+                    mesh.triangleCount() + leaves.triangleCount());
     }
 
     registry.report();

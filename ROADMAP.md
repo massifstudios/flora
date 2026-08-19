@@ -55,10 +55,15 @@ Stack: SDL3 + fixed-function OpenGL (system deps only; target skipped when absen
 Debug views: solid bark/foliage, branch orders, light values, buds, vigor/deadwood;
 step playback via deterministic re-simulation; orbit/zoom/pan camera.
 
-## M9 — Botanical LOD
+## M9 — Botanical LOD  (in progress)
 
 Thinning passes, order culling, radial reduction, cluster merge/cards, impostor inputs;
 LOD determinism + silhouette metrics.
+
+Done: twig cards (cluster merge → one textured card per twig) with the branchlets they
+represent culled from the branch mesh; material sets (colour/normal/roughness) with MTL
+export and a textured viewer. Open: thinning passes, order culling, radial reduction as
+explicit LOD levels, impostor inputs, silhouette metrics.
 
 ## M10 — Forest distribution
 

@@ -1,0 +1,17 @@
+{
+  "format": "flora-materials",
+  "version": 1,
+  "name": "Oak",
+  "bark": {
+    "color": "../textures/oak-bark-color.png",
+    "normal": "../textures/oak-bark-normal.png",
+    "roughness": "../textures/oak-bark-roughness.png",
+    "uvLengthScale": 1.2
+  },
+  "foliage": {
+    "color": "../textures/oak-foliage-color.png",
+    "aspect": 0.84,
+    "pivotU": 0.55,
+    "alphaCutoff": 0.5
+  }
+}

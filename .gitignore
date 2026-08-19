@@ -9,3 +9,4 @@ CMakeUserPresets.json
 
 # generated previews
 *.obj
+*.mtl

@@ -6,7 +6,9 @@
 #include <vector>
 
 #include "flora/geometry/branch_mesh.hpp"
+#include "flora/geometry/foliage_cards.hpp"
 #include "flora/geometry/foliage_mesh.hpp"
+#include "flora/geometry/material.hpp"
 #include "flora/growth/simulation.hpp"
 #include "flora/structure/foliage.hpp"
 #include "flora/species/species.hpp"
@@ -68,18 +70,52 @@ void writeMeshGroup(std::FILE* file, const Mesh& mesh, const char* group,
 
 // Branch + foliage mesh as one OBJ with material groups (Blender/MeshLab).
 // Z up, meters.
-bool writeTreeObj(const Mesh& branches, const Mesh& leaves, const char* path) {
+bool writeTreeObj(const Mesh& branches, const Mesh& leaves, const char* path,
+                  const std::string& materialLibrary) {
     std::FILE* file = std::fopen(path, "w");
     if (file == nullptr) {
         return false;
     }
     std::fprintf(file, "# flora tree mesh (Z up, meters)\n");
+    if (!materialLibrary.empty()) {
+        std::fprintf(file, "mtllib %s\n", materialLibrary.c_str());
+    }
     writeMeshGroup(file, branches, "bark", 0);
     if (leaves.vertexCount() > 0) {
         writeMeshGroup(file, leaves, "foliage", static_cast<unsigned long>(branches.vertexCount()));
     }
     std::fclose(file);
     return true;
+}
+
+// "tree.obj" -> ("tree.mtl", "tree.mtl"); the OBJ references the library by
+// file name, so both stay next to each other.
+std::string materialLibraryPath(const std::string& objPath) {
+    const std::size_t dot = objPath.find_last_of('.');
+    const std::size_t slash = objPath.find_last_of("/\\");
+    const bool hasExtension = dot != std::string::npos && (slash == std::string::npos || dot > slash);
+    return (hasExtension ? objPath.substr(0, dot) : objPath) + ".mtl";
+}
+
+std::string fileNameOf(const std::string& path) {
+    const std::size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+// Texture paths in the material file resolve from the working directory; the
+// MTL sits next to the OBJ, so they need re-rooting when the OBJ is elsewhere.
+std::string relativePrefixFromObj(const std::string& objPath) {
+    const std::size_t slash = objPath.find_last_of("/\\");
+    if (slash == std::string::npos) {
+        return "";
+    }
+    std::string prefix;
+    for (std::size_t i = 0; i <= slash; ++i) {
+        if (objPath[i] == '/' || objPath[i] == '\\') {
+            prefix += "../";
+        }
+    }
+    return prefix;
 }
 
 int printUsage() {
@@ -93,11 +129,17 @@ int printUsage() {
     std::printf("    --obj <path>         write solid branch mesh OBJ (Blender/MeshLab)\n");
     std::printf("    --skeleton <path>    write skeleton line OBJ (debug view)\n");
     std::printf("    --shade <mode>       self-shading: voxel (default), raycast, off\n");
+    std::printf("    --materials <file>   material set JSON; writes an .mtl beside the OBJ\n");
+    std::printf("    --foliage <mode>     cards (default: one textured twig card per twig,\n");
+    std::printf("                         fine branchlets not meshed) or clusters\n");
     return 1;
 }
 
+enum class FoliageMode { TwigCards, LeafClusters };
+
 int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& species,
-            const char* objPath, const char* skeletonPath, ShadeModel shadeModel) {
+            const char* objPath, const char* skeletonPath, ShadeModel shadeModel,
+            FoliageMode foliageMode, const char* materialsPath, const MaterialSet& materials) {
     Plant plant;
     plant.seed = seed;
     plantSeedling(plant, materializeGrowthParameters(species, seed, 0));
@@ -144,22 +186,55 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& sp
 
     if (objPath != nullptr) {
         BranchMeshParameters meshParameters; // stored radii: simulated by M5 thickening
+        Mesh leaves;
+        std::size_t cardCount = 0;
+        if (foliageMode == FoliageMode::TwigCards) {
+            // The twig photograph on the card contains the branchlets it grew
+            // on, so that wood is not swept: cull matches the card threshold.
+            TwigCardParameters cardParameters;
+            cardParameters.maxBearingRadius = finalParameters.leafMaxBearingRadius;
+            cardParameters.aspect = materials.foliageAspect;
+            cardParameters.pivotU = materials.foliagePivotU;
+            cardParameters.seed = seed;
+            meshParameters.cullBelowRadius = cardParameters.maxBearingRadius;
+
+            std::vector<TwigCard> cards;
+            buildTwigCards(plant.graph, clusters, tips, cardParameters, cards);
+            generateTwigCardMesh(cards, cardParameters, leaves);
+            cardCount = cards.size();
+        } else {
+            FoliageMeshParameters foliageParameters;
+            foliageParameters.seed = seed;
+            generateFoliageMesh(clusters, foliageParameters, leaves);
+            cardCount = clusters.size();
+        }
+
         Mesh mesh;
         generateBranchMesh(plant.graph, meshParameters, mesh);
-        FoliageMeshParameters foliageParameters;
-        foliageParameters.seed = seed;
-        Mesh leaves;
-        generateFoliageMesh(clusters, foliageParameters, leaves);
         std::string meshErrors;
         if (!validateMesh(mesh, &meshErrors) || !validateMesh(leaves, &meshErrors)) {
             std::printf("mesh:        INVALID: %s\n", meshErrors.c_str());
             return 2;
         }
-        if (writeTreeObj(mesh, leaves, objPath)) {
-            std::printf("mesh:        wrote %s (%zu vertices, %zu triangles, %zu leaf cards)\n",
-                        objPath, mesh.vertexCount() + leaves.vertexCount(),
-                        mesh.triangleCount() + leaves.triangleCount(),
-                        leaves.triangleCount() / 2);
+
+        std::string libraryName;
+        if (materialsPath != nullptr) {
+            const std::string libraryPath = materialLibraryPath(objPath);
+            std::ofstream library(libraryPath);
+            if (!library) {
+                std::printf("materials:   FAILED to write %s\n", libraryPath.c_str());
+                return 2;
+            }
+            library << materialLibraryText(materials, relativePrefixFromObj(objPath));
+            libraryName = fileNameOf(libraryPath);
+            std::printf("materials:   %s -> %s\n", materials.name.c_str(), libraryPath.c_str());
+        }
+
+        if (writeTreeObj(mesh, leaves, objPath, libraryName)) {
+            std::printf("mesh:        wrote %s (%zu vertices, %zu triangles, %zu %s)\n", objPath,
+                        mesh.vertexCount() + leaves.vertexCount(),
+                        mesh.triangleCount() + leaves.triangleCount(), cardCount,
+                        foliageMode == FoliageMode::TwigCards ? "twig cards" : "leaf clusters");
         } else {
             std::printf("mesh:        FAILED to write %s\n", objPath);
             return 2;
@@ -191,9 +266,12 @@ int main(int argc, char** argv) {
         const std::uint64_t seed = std::stoull(argv[2]);
         const std::uint32_t steps = static_cast<std::uint32_t>(std::stoul(argv[3]));
         SpeciesDefinition species;
+        MaterialSet materials;
         const char* objPath = nullptr;
         const char* skeletonPath = nullptr;
+        const char* materialsPath = nullptr;
         ShadeModel shadeModel = ShadeModel::VoxelPropagation;
+        FoliageMode foliageMode = FoliageMode::TwigCards;
         for (int i = 4; i < argc; ++i) {
             if (std::strcmp(argv[i], "--species") == 0 && i + 1 < argc) {
                 const char* path = argv[++i];
@@ -213,6 +291,22 @@ int main(int argc, char** argv) {
                 objPath = argv[++i];
             } else if (std::strcmp(argv[i], "--skeleton") == 0 && i + 1 < argc) {
                 skeletonPath = argv[++i];
+            } else if (std::strcmp(argv[i], "--materials") == 0 && i + 1 < argc) {
+                materialsPath = argv[++i];
+                std::string error;
+                if (!loadMaterialSetFromFile(materialsPath, materials, &error)) {
+                    std::printf("invalid material file %s: %s\n", materialsPath, error.c_str());
+                    return 1;
+                }
+            } else if (std::strcmp(argv[i], "--foliage") == 0 && i + 1 < argc) {
+                const char* mode = argv[++i];
+                if (std::strcmp(mode, "cards") == 0) {
+                    foliageMode = FoliageMode::TwigCards;
+                } else if (std::strcmp(mode, "clusters") == 0) {
+                    foliageMode = FoliageMode::LeafClusters;
+                } else {
+                    return printUsage();
+                }
             } else if (std::strcmp(argv[i], "--shade") == 0 && i + 1 < argc) {
                 const char* mode = argv[++i];
                 if (std::strcmp(mode, "voxel") == 0) {
@@ -228,7 +322,8 @@ int main(int argc, char** argv) {
                 return printUsage();
             }
         }
-        return runGrow(seed, steps, species, objPath, skeletonPath, shadeModel);
+        return runGrow(seed, steps, species, objPath, skeletonPath, shadeModel, foliageMode,
+                       materialsPath, materials);
     }
     return printUsage();
 }

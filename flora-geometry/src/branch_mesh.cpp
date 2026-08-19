@@ -37,18 +37,27 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
     std::vector<Vec3> tips;
     graph.computeTipPositions(tips);
 
+    // Culled stems drop their whole subtree: a twig card stands in for the
+    // branchlets beyond the cut as well as for the leaves on them.
+    std::vector<char> meshed(count, 0);
+    for (Index i = 0; i < static_cast<Index>(count); ++i) {
+        const Internode& node = graph.internode(i);
+        const bool parentMeshed = node.parent == kInvalidIndex || meshed[node.parent] != 0;
+        meshed[i] = (node.alive && parentMeshed && node.radius >= parameters.cullBelowRadius) ? 1 : 0;
+    }
+
     // First live continuation child per internode; axes start where the parent
     // link is absent or continues through a different child.
     std::vector<Index> continuation(count, kInvalidIndex);
     for (Index i = 0; i < static_cast<Index>(count); ++i) {
         const Internode& node = graph.internode(i);
-        if (!node.alive) {
+        if (meshed[i] == 0) {
             continue;
         }
         for (Index child = node.firstChild; child != kInvalidIndex;
              child = graph.internode(child).nextSibling) {
             const Internode& candidate = graph.internode(child);
-            if (candidate.alive && candidate.branchOrder == node.branchOrder) {
+            if (meshed[child] != 0 && candidate.branchOrder == node.branchOrder) {
                 continuation[i] = child;
                 break;
             }
@@ -83,7 +92,7 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
 
     for (Index start = 0; start < static_cast<Index>(count); ++start) {
         const Internode& startNode = graph.internode(start);
-        if (!startNode.alive) {
+        if (meshed[start] == 0) {
             continue;
         }
         if (startNode.parent != kInvalidIndex && continuation[startNode.parent] == start) {

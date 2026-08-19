@@ -196,6 +196,16 @@ Structure → mesh, disposable output:
 - Botanical LOD operators (before generic decimation): childless-branch thinning passes,
   branch-order culling, radial segment reduction, foliage cluster merging → cards →
   impostor inputs. Silhouette before internal detail.
+- Twig cards (M9): a leafy twig — its branchlets and every foliage cluster on them — is
+  replaced by one alpha-cut card textured with a photographed twig, and the wood it stands
+  for is not swept at all (`BranchMeshParameters::cullBelowRadius`). Cards are cut to one
+  twig length so a card always depicts what its texture depicts. This is a geometry-side
+  merge: the simulation keeps placing clusters at full density, because they are the
+  shadow casters and energy producers.
+- Materials are presentation data in a separate versioned file (`flora-materials`), never
+  in species definitions: a species is biology, a material set is one look for it. Colour,
+  normal and roughness maps travel to exporters and engines; the diagnostic viewer uses
+  colour maps only.
 
 ## 10. Forest strategy
 

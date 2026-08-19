@@ -49,6 +49,9 @@ tasks:
     cmds:
       - ./{{.BUILD_DIR}}/flora-cli/flora grow 42 35 --species presets/decurrent-broadleaf.json --obj broadleaf.obj
       - ./{{.BUILD_DIR}}/flora-cli/flora grow 7 45 --species presets/excurrent-conifer.json --obj conifer.obj
+      - >-
+        ./{{.BUILD_DIR}}/flora-cli/flora grow 11 40 --species presets/oak.json
+        --materials presets/oak.materials.json --obj oak.obj
 
   view:
     desc: "Open the interactive viewer; args after -- (default: broadleaf, 35 steps)"
@@ -56,7 +59,7 @@ tasks:
     cmds:
       - >-
         ./{{.BUILD_DIR}}/flora-viewer/flora-viewer
-        {{.CLI_ARGS | default "42 35 --species presets/decurrent-broadleaf.json"}}
+        {{.CLI_ARGS | default "11 40 --species presets/oak.json --materials presets/oak.materials.json"}}
 
   check:
     desc: Everything a commit needs — build, tests, benchmarks

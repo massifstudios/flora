@@ -3,6 +3,7 @@ add_executable(flora-tests
     test_species.cpp
     test_branch_mesh.cpp
     test_foliage.cpp
+    test_foliage_cards.cpp
     test_growth.cpp
     test_hydraulics.cpp
     test_light.cpp
