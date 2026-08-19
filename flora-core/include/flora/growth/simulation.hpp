@@ -40,6 +40,7 @@ private:
     std::vector<std::uint32_t> budOffsets_; // CSR: buds grouped by internode
     std::vector<Index> budIndices_;
     std::vector<Vec3> tipPositions_;  // per internode, phase 1
+    std::vector<float> pathLength_;   // per internode, stem path from root to tip
     std::vector<FoliageCluster> foliageClusters_; // phase 1 placement
     std::vector<float> foliageScratch_;
     std::vector<Vec3> casterPositions_; // cluster positions shading the voxel field

@@ -15,7 +15,7 @@ namespace flora {
 // deterministically materializes the GrowthParameters for that individual at
 // a given age.
 
-inline constexpr std::uint32_t kSpeciesSchemaVersion = 2;
+inline constexpr std::uint32_t kSpeciesSchemaVersion = 3;
 
 // Normal distribution with clamping. stddev 0 collapses to the mean.
 struct Distribution {
@@ -79,6 +79,13 @@ struct SpeciesDefinition {
     SpeciesParameter leafClusterScale{{0.35f, 0.0f, 0.01f, 5.0f}, {}};
     SpeciesParameter leafDroop{{0.25f, 0.0f, -1.0f, 1.0f}, {}};
     SpeciesParameter leafProductivity{{7.0f, 0.0f, 0.0f, 1000.0f}, {}};
+    // Schema v3: hydraulic limitation. maxPathLength is the species' mature
+    // size ceiling (stem path, not straight-line height) with per-individual
+    // variation; 0 removes the limit.
+    SpeciesParameter maxPathLength{{40.0f, 0.0f, 0.0f, 200.0f}, {}};
+    SpeciesParameter hydraulicFalloff{{2.0f, 0.0f, 0.25f, 8.0f}, {}};
+    // Living shell thickness; heartwood inside it is free to maintain.
+    SpeciesParameter sapwoodDepth{{0.05f, 0.0f, 0.002f, 1.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;

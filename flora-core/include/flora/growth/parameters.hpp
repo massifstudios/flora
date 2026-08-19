@@ -61,13 +61,25 @@ struct GrowthParameters {
     // without rebalancing the whole energy budget.
     float leafProductivity = 7.0f;
 
+    // Hydraulic limitation (APPROXIMATE; ARCHITECTURE.md §6): water transport
+    // over a long conduit path costs pressure, so extension growth fades with
+    // the root-to-tip stem path length and stops at maxPathLength. This is
+    // what bounds tree height and crown reach; without it extension is
+    // unbounded. 0 disables the limit.
+    float maxPathLength = 40.0f;   // meters of stem path a shoot can be fed over
+    float hydraulicFalloff = 2.0f; // exponent: >1 keeps early growth vigorous
+
     // Secondary thickening: cross-section area gain per unit collected energy
     // per step (incremental pipe model)
     float thicknessGrowthFactor = 1.5e-6f;
 
     // Shedding: a lateral branch is shed when its collected energy divided by
-    // (maintenanceCostPerVolume × subtree wood volume) falls below the ratio.
+    // (maintenanceCostPerVolume × subtree sapwood volume) falls below the
+    // ratio. Only the outer sapwoodDepth of a stem is living, respiring tissue;
+    // heartwood inside it costs nothing, so maintenance grows with girth rather
+    // than with cross-section and old trunks stay affordable.
     float maintenanceCostPerVolume = 400.0f; // energy units per m^3 per step
+    float sapwoodDepth = 0.05f;              // meters inward from the surface
     float dropWeakBranchRatio = 1.0f;        // 0 disables shedding
     // At most this fraction of the tree sheds per step, worst branches first.
     // Spreads correction over time instead of mass die-offs when maintenance

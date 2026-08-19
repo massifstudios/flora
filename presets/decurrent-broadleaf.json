@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 2,
+  "version": 3,
   "name": "Decurrent Broadleaf",
   "parameters": {
     "baseGrowthLength": {
@@ -82,6 +82,13 @@
     "budDormancyLimit": 3,
     "branchDecaySteps": 5,
     "maxInternodes": 100000,
-    "leafProductivity": 6.0
+    "leafProductivity": 6.0,
+    "maxPathLength": {
+      "mean": 38.0,
+      "stddev": 2.28,
+      "min": 26.6,
+      "max": 47.5
+    },
+    "hydraulicFalloff": 4.0
   }
 }

@@ -214,12 +214,12 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
     for (const Vec3& tip : tips) {
         height = std::max(height, tip.z);
     }
-    CHECK(height == doctest::Approx(10.832044f).epsilon(0.001));
+    CHECK(height == doctest::Approx(10.585931f).epsilon(0.001));
 }
 
 TEST_CASE("regression: pinned structure for default parameters (voxel shading)") {
     // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
     const Plant plant = grownPlant(42, 14, GrowthParameters{});
-    CHECK(plant.graph.internodeCount() == 648);
-    CHECK(plant.graph.budCount() == 433);
+    CHECK(plant.graph.internodeCount() == 526);
+    CHECK(plant.graph.budCount() == 326);
 }

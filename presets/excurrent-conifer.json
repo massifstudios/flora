@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 2,
+  "version": 3,
   "name": "Excurrent Conifer",
   "parameters": {
     "baseGrowthLength": {
@@ -82,6 +82,13 @@
     "budDormancyLimit": 2,
     "branchDecaySteps": 6,
     "maxInternodes": 100000,
-    "leafProductivity": 9.0
+    "leafProductivity": 9.0,
+    "maxPathLength": {
+      "mean": 52.0,
+      "stddev": 3.12,
+      "min": 36.4,
+      "max": 65.0
+    },
+    "hydraulicFalloff": 4.0
   }
 }

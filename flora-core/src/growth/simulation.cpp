@@ -56,12 +56,28 @@ Vec3 hemisphereRay(std::uint32_t rayIndex, std::uint32_t rayCount) {
     return {radial * std::cos(azimuth), radial * std::sin(azimuth), zenith};
 }
 
+// Fraction of the ideal metamer length a shoot fed over this much stem path
+// can still extend: 1 at the base, 0 at maxPathLength.
+float hydraulicExtension(const GrowthParameters& parameters, float pathLength) {
+    if (parameters.maxPathLength <= 0.0f) {
+        return 1.0f;
+    }
+    const float reach = std::clamp(pathLength / parameters.maxPathLength, 0.0f, 1.0f);
+    return std::max(0.0f, 1.0f - std::pow(reach, parameters.hydraulicFalloff));
+}
+
+// Below this the remaining extension is not worth a metamer: the bud goes
+// dormant instead of producing degenerate near-zero-length internodes.
+constexpr float kMinExtensionFactor = 0.02f;
+
 // Appends a shoot of metamerCount internodes from the given bud, steering
 // each metamer by tropisms and gnarl and placing lateral buds by phyllotaxis,
-// then moves the bud to the new tip. Works on indices only: addInternode and
-// addBud may reallocate the underlying arrays.
+// then moves the bud to the new tip. Metamers shorten as the shoot extends the
+// stem path. Works on indices only: addInternode and addBud may reallocate the
+// underlying arrays.
 void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lightDirection,
-               Index budIndex, std::uint32_t metamerCount, std::uint32_t step) {
+               Index budIndex, std::uint32_t metamerCount, float pathLength,
+               std::uint32_t step) {
     StemGraph& graph = plant.graph;
 
     const Bud budBefore = graph.bud(budIndex);
@@ -81,11 +97,17 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
                              randomUnitVector(stream) * parameters.gnarl;
         direction = steered.normalizedOr(direction);
 
+        const float extension = hydraulicExtension(parameters, pathLength);
+        if (extension < kMinExtensionFactor) {
+            break;
+        }
+        const float length = parameters.baseGrowthLength * extension;
+        pathLength += length;
+
         const AxisRelation relation = (metamer == 0 && startsLateralAxis)
                                           ? AxisRelation::Lateral
                                           : AxisRelation::Continuation;
-        attachment = graph.addInternode(attachment, relation, direction,
-                                        parameters.baseGrowthLength,
+        attachment = graph.addInternode(attachment, relation, direction, length,
                                         parameters.baseGrowthThickness, step);
 
         rollAngle += parameters.phyllotaxisAngle;
@@ -101,6 +123,13 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
             const Index lateralBud = graph.addBud(attachment, BudType::Lateral, budDirection, step);
             graph.bud(lateralBud).rollAngle = budRoll;
         }
+    }
+
+    if (attachment == budBefore.internode) {
+        Bud& blocked = graph.bud(budIndex); // hydraulic limit reached mid-shoot
+        blocked.state = BudState::Dormant;
+        blocked.creationStep = step;
+        return;
     }
 
     Bud& bud = graph.bud(budIndex); // fresh reference: array may have moved
@@ -160,6 +189,16 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
 
     graph.computeTipPositions(context.tipPositions_);
     const auto& tipPositions = context.tipPositions_;
+
+    // Stem path from the root base to each internode tip: the conduit length
+    // water travels to feed a bud sitting there (hydraulic limitation, phase 6).
+    auto& pathLength = context.pathLength_;
+    pathLength.assign(internodeCount, 0.0f);
+    for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+        const Internode& node = graph.internode(i);
+        const float upstream = node.parent == kInvalidIndex ? 0.0f : pathLength[node.parent];
+        pathLength[i] = upstream + node.length;
+    }
 
     // Foliage placement: clusters are the photosynthetic producers and the
     // shadow casters. Thick interior wood bears no leaves, so it produces
@@ -246,12 +285,15 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
     }
 
+    // Living tissue only: the sapwood shell, not the heartwood core.
     auto& woodVolume = context.woodVolume_;
     woodVolume.assign(internodeCount, 0.0f);
     for (std::size_t i = 0; i < internodeCount; ++i) {
         const Internode& node = graph.internode(static_cast<Index>(i));
         if (node.alive) {
-            woodVolume[i] = kPi * node.radius * node.radius * node.length;
+            const float heartwoodRadius = std::max(0.0f, node.radius - parameters.sapwoodDepth);
+            woodVolume[i] = kPi * (node.radius * node.radius - heartwoodRadius * heartwoodRadius) *
+                            node.length;
         }
     }
     for (std::size_t i = internodeCount; i-- > 0;) {
@@ -360,9 +402,16 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
     }
 
-    // Phase 5 — bud fate: dormant buds beyond the dormancy limit die.
+    // Phase 5 — bud fate: unused lateral buds abort once they outlast the
+    // dormancy limit. Apical meristems are not aborted: an axis that cannot
+    // afford to extend this year keeps its growing point and resumes when
+    // resources return, which is what stops a mature crown from running out of
+    // meristems and dissolving.
     for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
         Bud& bud = graph.bud(budIndex);
+        if (bud.type == BudType::Apical) {
+            continue;
+        }
         if (bud.state == BudState::Dormant && step - bud.creationStep > parameters.budDormancyLimit) {
             bud.state = BudState::Dead;
         }
@@ -382,6 +431,16 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             graph.bud(budIndex).state = BudState::Dormant;
             continue;
         }
+        const float budPath = pathLength[graph.bud(budIndex).internode];
+        if (hydraulicExtension(parameters, budPath) < kMinExtensionFactor) {
+            // Out of hydraulic reach, not starved: the meristem stays latent
+            // rather than aging out, so a tree that has stopped extending keeps
+            // its crown instead of losing every growing point.
+            Bud& bud = graph.bud(budIndex);
+            bud.state = BudState::Dormant;
+            bud.creationStep = step;
+            continue;
+        }
         // Rounded, minimum one: a bud past the activation threshold always
         // grows. Truncation would let float noise (e.g. 0.99999994) drop a
         // metamer and silently stall an axis.
@@ -391,7 +450,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             graph.bud(budIndex).state = BudState::Dormant;
             continue;
         }
-        growShoot(plant, parameters, budLightDirection[budIndex], budIndex, metamerCount, step);
+        growShoot(plant, parameters, budLightDirection[budIndex], budIndex, metamerCount, budPath,
+                  step);
     }
 
     // Phase 7 — secondary thickening: incremental pipe model. Cross-section

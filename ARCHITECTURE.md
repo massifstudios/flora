@@ -108,6 +108,18 @@ Fixed phase order per step (changing order is an architecture change):
 ```
 
 Shedding runs before allocation so no resource is wasted on doomed branches.
+
+Size is bounded by hydraulic limitation, not by a height parameter: extension
+growth scales with `1 - (pathLength / maxPathLength)^hydraulicFalloff` over the
+root-to-tip stem path, so shoots shorten as the transport path lengthens and
+stop at the species ceiling (Ryan & Yoder 1997, classified APPROXIMATE — the
+visible effect is the asymptote and the short upper-crown shoots, not the
+pressure physiology). Two consequences are load-bearing: apical meristems are
+never aborted by the dormancy limit (only unused lateral buds are), so a crown
+that has stopped extending keeps its growing points instead of dissolving; and
+maintenance cost counts only the outer `sapwoodDepth` shell of each stem, so an
+old trunk's heartwood is free and thickening cannot starve the tree it belongs
+to.
 Bending (cantilever + plastic integration) is a high-fidelity sub-phase of 6/7, classified
 APPROXIMATE, skipped below structural fidelity.
 
