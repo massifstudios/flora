@@ -49,10 +49,11 @@ Light query benchmarks.
 Cluster placement from structure (threshold/spacing/droop), foliage geometry instancing,
 leaf-shade coupling into light backend.
 
-## M8 — Standalone viewer (first cut)
+## M8 — Standalone viewer (first cut)  ✅
 
-Stack chosen at milestone start. Debug views: buds, orders, light values, prune decisions,
-growth playback.
+Stack: SDL3 + fixed-function OpenGL (system deps only; target skipped when absent).
+Debug views: solid bark/foliage, branch orders, light values, buds, vigor/deadwood;
+step playback via deterministic re-simulation; orbit/zoom/pan camera.
 
 ## M9 — Botanical LOD
 

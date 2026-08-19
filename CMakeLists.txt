@@ -16,6 +16,7 @@ endif()
 option(FLORA_BUILD_TESTS "Build unit tests" ON)
 option(FLORA_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(FLORA_BUILD_CLI "Build command-line tool" ON)
+option(FLORA_BUILD_VIEWER "Build interactive viewer (needs SDL3 + OpenGL)" ON)
 option(FLORA_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
 
 add_library(flora_warnings INTERFACE)
@@ -36,6 +37,10 @@ add_subdirectory(flora-geometry)
 
 if(FLORA_BUILD_CLI)
     add_subdirectory(flora-cli)
+endif()
+
+if(FLORA_BUILD_VIEWER)
+    add_subdirectory(flora-viewer)
 endif()
 
 if(FLORA_BUILD_TESTS)

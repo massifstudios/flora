@@ -41,7 +41,7 @@ flora-core/       # simulation authority; zero rendering/engine deps
 flora-geometry/   # ring meshing, junction melding, foliage instancing, LOD, wind metadata
 flora-export/     # glTF, OBJ, compact runtime format
 flora-cli/        # generation, batch, diagnostics, export
-flora-viewer/     # visualization/editing (later; stack chosen when reached)
+flora-viewer/     # SDL3 + fixed-function OpenGL diagnostic viewer (optional target)
 integrations/unreal/  # optional adapter (later)
 benchmarks/       # custom micro/macro benchmark harness
 tests/            # doctest-based unit/property/regression tests
