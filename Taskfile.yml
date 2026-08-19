@@ -1,0 +1,70 @@
+# Task runner (go-task; Arch binary is `go-task`, elsewhere `task`).
+#   go-task            -> build + test
+#   go-task view       -- 42 35   (extra args after --)
+version: "3"
+
+vars:
+  BUILD_DIR: build
+
+tasks:
+  default:
+    deps: [test]
+
+  configure:
+    desc: Configure the CMake build directory
+    cmds:
+      - cmake -S . -B {{.BUILD_DIR}}
+    status:
+      - test -f {{.BUILD_DIR}}/CMakeCache.txt
+
+  build:
+    desc: Build all targets
+    deps: [configure]
+    cmds:
+      - cmake --build {{.BUILD_DIR}}
+
+  test:
+    desc: Run the full test suite
+    deps: [build]
+    cmds:
+      - ctest --test-dir {{.BUILD_DIR}} --output-on-failure
+
+  bench:
+    desc: Run benchmarks (optimized build assumed)
+    deps: [build]
+    cmds:
+      - ./{{.BUILD_DIR}}/benchmarks/flora-bench
+
+  grow:
+    desc: "Grow a tree via CLI; args after -- (default: broadleaf preview)"
+    deps: [build]
+    cmds:
+      - >-
+        ./{{.BUILD_DIR}}/flora-cli/flora grow
+        {{.CLI_ARGS | default "42 35 --species presets/decurrent-broadleaf.json --obj broadleaf.obj"}}
+
+  previews:
+    desc: Write preview OBJ files for both species presets
+    deps: [build]
+    cmds:
+      - ./{{.BUILD_DIR}}/flora-cli/flora grow 42 35 --species presets/decurrent-broadleaf.json --obj broadleaf.obj
+      - ./{{.BUILD_DIR}}/flora-cli/flora grow 7 45 --species presets/excurrent-conifer.json --obj conifer.obj
+
+  view:
+    desc: "Open the interactive viewer; args after -- (default: broadleaf, 35 steps)"
+    deps: [build]
+    cmds:
+      - >-
+        ./{{.BUILD_DIR}}/flora-viewer/flora-viewer
+        {{.CLI_ARGS | default "42 35 --species presets/decurrent-broadleaf.json"}}
+
+  check:
+    desc: Everything a commit needs — build, tests, benchmarks
+    cmds:
+      - task: test
+      - task: bench
+
+  clean:
+    desc: Remove the build directory
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
