@@ -1,5 +1,6 @@
 add_library(flora-geometry
     src/branch_mesh.cpp
+    src/foliage_mesh.cpp
     src/mesh.cpp)
 
 add_library(flora::geometry ALIAS flora-geometry)

@@ -3,32 +3,85 @@
   "version": 2,
   "name": "Decurrent Broadleaf",
   "parameters": {
-    "baseGrowthLength": {"mean": 0.4, "stddev": 0.04, "min": 0.15, "max": 0.8},
+    "baseGrowthLength": {
+      "mean": 0.4,
+      "stddev": 0.04,
+      "min": 0.15,
+      "max": 0.8
+    },
     "baseGrowthThickness": 0.01,
     "apicalControl": {
       "mean": 0.62,
       "stddev": 0.03,
       "min": 0.4,
       "max": 0.9,
-      "overAge": [[0, 0.75], [15, 0.62], [40, 0.55]]
+      "overAge": [
+        [
+          0,
+          0.75
+        ],
+        [
+          15,
+          0.62
+        ],
+        [
+          40,
+          0.55
+        ]
+      ]
     },
-    "vigorScale": {"mean": 1.0, "stddev": 0.05, "min": 0.5, "max": 2.0},
+    "vigorScale": {
+      "mean": 1.0,
+      "stddev": 0.05,
+      "min": 0.5,
+      "max": 2.0
+    },
     "activationThreshold": 0.5,
-    "branchAngle": {"mean": 38.0, "stddev": 6.0, "min": 15.0, "max": 75.0},
+    "branchAngle": {
+      "mean": 38.0,
+      "stddev": 6.0,
+      "min": 15.0,
+      "max": 75.0
+    },
     "branchAngleJitter": 5.0,
     "phyllotaxisAngle": 137.5,
-    "gravitropism": {"mean": 0.06, "stddev": 0.01, "min": -0.5, "max": 0.5},
+    "gravitropism": {
+      "mean": 0.06,
+      "stddev": 0.01,
+      "min": -0.5,
+      "max": 0.5
+    },
     "phototropism": 0.05,
-    "gnarl": {"mean": 0.09, "stddev": 0.015, "min": 0.0, "max": 0.4},
-    "thicknessGrowthFactor": 1.5e-6,
+    "gnarl": {
+      "mean": 0.09,
+      "stddev": 0.015,
+      "min": 0.0,
+      "max": 0.4
+    },
+    "thicknessGrowthFactor": 1.5e-06,
     "maintenanceCostPerVolume": 400.0,
     "dropWeakBranchRatio": 1.0,
     "shadowIntensity": 0.2,
     "shadowFalloff": 2.0,
+    "leafMaxBearingRadius": 0.02,
+    "leafClusterSpacing": {
+      "mean": 0.35,
+      "stddev": 0.03,
+      "min": 0.15,
+      "max": 1.0
+    },
+    "leafClusterScale": {
+      "mean": 0.45,
+      "stddev": 0.05,
+      "min": 0.1,
+      "max": 1.5
+    },
+    "leafDroop": 0.35,
     "maxMetamersPerShoot": 3,
     "lateralBudsPerMetamer": 1,
     "budDormancyLimit": 3,
     "branchDecaySteps": 5,
-    "maxInternodes": 100000
+    "maxInternodes": 100000,
+    "leafProductivity": 6.0
   }
 }

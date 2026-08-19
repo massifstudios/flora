@@ -6,7 +6,9 @@
 #include <vector>
 
 #include "flora/geometry/branch_mesh.hpp"
+#include "flora/geometry/foliage_mesh.hpp"
 #include "flora/growth/simulation.hpp"
+#include "flora/structure/foliage.hpp"
 #include "flora/species/species.hpp"
 #include "flora/species/species_io.hpp"
 #include "flora/structure/stem_graph.hpp"
@@ -41,13 +43,9 @@ bool writeSkeletonObj(const StemGraph& graph, const char* path) {
     return true;
 }
 
-// Solid branch mesh as OBJ (v/vt/vn/f), openable anywhere. Z up, meters.
-bool writeMeshObj(const Mesh& mesh, const char* path) {
-    std::FILE* file = std::fopen(path, "w");
-    if (file == nullptr) {
-        return false;
-    }
-    std::fprintf(file, "# flora branch mesh (Z up, meters)\n");
+void writeMeshGroup(std::FILE* file, const Mesh& mesh, const char* group,
+                    unsigned long indexOffset) {
+    std::fprintf(file, "g %s\nusemtl %s\n", group, group);
     for (const Vec3& p : mesh.positions) {
         std::fprintf(file, "v %.5f %.5f %.5f\n", static_cast<double>(p.x),
                      static_cast<double>(p.y), static_cast<double>(p.z));
@@ -61,10 +59,24 @@ bool writeMeshObj(const Mesh& mesh, const char* path) {
                      static_cast<double>(n.y), static_cast<double>(n.z));
     }
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-        const unsigned long a = mesh.indices[i] + 1;
-        const unsigned long b = mesh.indices[i + 1] + 1;
-        const unsigned long c = mesh.indices[i + 2] + 1;
+        const unsigned long a = mesh.indices[i] + 1 + indexOffset;
+        const unsigned long b = mesh.indices[i + 1] + 1 + indexOffset;
+        const unsigned long c = mesh.indices[i + 2] + 1 + indexOffset;
         std::fprintf(file, "f %lu/%lu/%lu %lu/%lu/%lu %lu/%lu/%lu\n", a, a, a, b, b, b, c, c, c);
+    }
+}
+
+// Branch + foliage mesh as one OBJ with material groups (Blender/MeshLab).
+// Z up, meters.
+bool writeTreeObj(const Mesh& branches, const Mesh& leaves, const char* path) {
+    std::FILE* file = std::fopen(path, "w");
+    if (file == nullptr) {
+        return false;
+    }
+    std::fprintf(file, "# flora tree mesh (Z up, meters)\n");
+    writeMeshGroup(file, branches, "bark", 0);
+    if (leaves.vertexCount() > 0) {
+        writeMeshGroup(file, leaves, "foliage", static_cast<unsigned long>(branches.vertexCount()));
     }
     std::fclose(file);
     return true;
@@ -122,20 +134,32 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& sp
     std::printf("height:      %.2f m\n", static_cast<double>(height));
     std::printf("crown radius %.2f m\n", static_cast<double>(std::sqrt(spread)));
     std::printf("max order:   %u\n", maxOrder);
+
+    const GrowthParameters finalParameters =
+        materializeGrowthParameters(species, seed, plant.ageSteps);
+    std::vector<FoliageCluster> clusters;
+    computeFoliagePlacement(plant.graph, finalParameters, tips, clusters);
+    std::printf("foliage:     %zu clusters\n", clusters.size());
     std::printf("invariants:  %s\n", valid ? "ok" : errors.c_str());
 
     if (objPath != nullptr) {
         BranchMeshParameters meshParameters; // stored radii: simulated by M5 thickening
         Mesh mesh;
         generateBranchMesh(plant.graph, meshParameters, mesh);
+        FoliageMeshParameters foliageParameters;
+        foliageParameters.seed = seed;
+        Mesh leaves;
+        generateFoliageMesh(clusters, foliageParameters, leaves);
         std::string meshErrors;
-        if (!validateMesh(mesh, &meshErrors)) {
+        if (!validateMesh(mesh, &meshErrors) || !validateMesh(leaves, &meshErrors)) {
             std::printf("mesh:        INVALID: %s\n", meshErrors.c_str());
             return 2;
         }
-        if (writeMeshObj(mesh, objPath)) {
-            std::printf("mesh:        wrote %s (%zu vertices, %zu triangles)\n", objPath,
-                        mesh.vertexCount(), mesh.triangleCount());
+        if (writeTreeObj(mesh, leaves, objPath)) {
+            std::printf("mesh:        wrote %s (%zu vertices, %zu triangles, %zu leaf cards)\n",
+                        objPath, mesh.vertexCount() + leaves.vertexCount(),
+                        mesh.triangleCount() + leaves.triangleCount(),
+                        leaves.triangleCount() / 2);
         } else {
             std::printf("mesh:        FAILED to write %s\n", objPath);
             return 2;

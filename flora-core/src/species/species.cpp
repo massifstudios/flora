@@ -66,6 +66,13 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
         species.maxShedFractionPerStep.value(stream.normal(0.0f, 1.0f), age);
     parameters.shadowIntensity = species.shadowIntensity.value(stream.normal(0.0f, 1.0f), age);
     parameters.shadowFalloff = species.shadowFalloff.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafMaxBearingRadius =
+        species.leafMaxBearingRadius.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafClusterSpacing =
+        species.leafClusterSpacing.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafClusterScale = species.leafClusterScale.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafDroop = species.leafDroop.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafProductivity = species.leafProductivity.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;

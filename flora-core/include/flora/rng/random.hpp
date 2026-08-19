@@ -41,6 +41,7 @@ enum class RngPurpose : std::uint64_t {
     Orientation = 4,
     SpeciesVariation = 5,
     ForestDistribution = 6,
+    Foliage = 7,
 };
 
 // Sequential deterministic generator over a derived key (SplitMix64 stream).

@@ -50,6 +50,17 @@ struct GrowthParameters {
     std::uint32_t shadowDepth = 5;     // pyramid layers
     std::uint32_t raycastRayCount = 32; // hemisphere rays, Raycast backend only
 
+    // Foliage placement (derived per step; structure/foliage.hpp). Clusters
+    // are the photosynthetic producers and the shadow casters.
+    float leafMaxBearingRadius = 0.02f; // twigs at or below this radius bear leaves
+    float leafClusterSpacing = 0.3f;    // min axis-path distance between clusters, meters
+    float leafClusterScale = 0.35f;     // cluster radius, meters
+    float leafDroop = 0.25f;            // downward blend of cluster orientation
+    // Energy per m² of cluster cross-section per step at full light:
+    // production scales with leaf area, so cluster size and spacing trade off
+    // without rebalancing the whole energy budget.
+    float leafProductivity = 7.0f;
+
     // Secondary thickening: cross-section area gain per unit collected energy
     // per step (incremental pipe model)
     float thicknessGrowthFactor = 1.5e-6f;

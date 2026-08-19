@@ -3,7 +3,9 @@
 
 #include "bench.hpp"
 #include "flora/geometry/branch_mesh.hpp"
+#include "flora/geometry/foliage_mesh.hpp"
 #include "flora/growth/simulation.hpp"
+#include "flora/structure/foliage.hpp"
 #include "flora/rng/random.hpp"
 #include "flora/structure/stem_graph.hpp"
 #include "flora/version.hpp"
@@ -209,6 +211,23 @@ int main() {
                      [&] { generateBranchMesh(plant.graph, display, mesh); });
         std::printf("  (display radii: %zu vertices, %zu triangles)\n", mesh.vertexCount(),
                     mesh.triangleCount());
+
+        std::vector<Vec3> tips;
+        plant.graph.computeTipPositions(tips);
+        std::vector<float> scratch;
+        std::vector<FoliageCluster> clusters;
+        registry.run("foliage/placement_100k_internodes", internodes, "internode", [&] {
+            computeFoliagePlacement(plant.graph, growthParameters, tips, scratch, clusters);
+        });
+        std::printf("  (placed %zu clusters)\n", clusters.size());
+
+        FoliageMeshParameters foliageParameters;
+        foliageParameters.seed = plant.seed;
+        Mesh leaves;
+        registry.run("foliage/mesh_generation", clusters.size(), "cluster",
+                     [&] { generateFoliageMesh(clusters, foliageParameters, leaves); });
+        std::printf("  (foliage: %zu vertices, %zu triangles)\n", leaves.vertexCount(),
+                    leaves.triangleCount());
     }
 
     registry.report();

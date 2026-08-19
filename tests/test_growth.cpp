@@ -199,14 +199,14 @@ TEST_CASE("successive lateral buds follow the phyllotactic spiral") {
 }
 
 TEST_CASE("regression: pinned structure for the reference path (shading off)") {
-    // Golden snapshot for (seed 42, 14 steps, defaults, ShadeModel::Off). A
-    // change here is a deterministic-output change and requires a
-    // kSimulationRevision bump.
+    // Golden snapshot for (seed 42, 10 steps, defaults, ShadeModel::Off),
+    // below the internode cap. A change here is a deterministic-output change
+    // and requires a kSimulationRevision bump.
     GrowthParameters parameters;
     parameters.shadeModel = ShadeModel::Off;
-    const Plant plant = grownPlant(42, 14, parameters);
-    CHECK(plant.graph.internodeCount() == 12164);
-    CHECK(plant.graph.budCount() == 12164);
+    const Plant plant = grownPlant(42, 10, parameters);
+    CHECK(plant.graph.internodeCount() == 38957);
+    CHECK(plant.graph.budCount() == 38957);
 
     std::vector<Vec3> tips;
     plant.graph.computeTipPositions(tips);
@@ -214,12 +214,12 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
     for (const Vec3& tip : tips) {
         height = std::max(height, tip.z);
     }
-    CHECK(height == doctest::Approx(12.924929f).epsilon(0.001));
+    CHECK(height == doctest::Approx(10.832044f).epsilon(0.001));
 }
 
 TEST_CASE("regression: pinned structure for default parameters (voxel shading)") {
     // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
     const Plant plant = grownPlant(42, 14, GrowthParameters{});
-    CHECK(plant.graph.internodeCount() == 135);
-    CHECK(plant.graph.budCount() == 80);
+    CHECK(plant.graph.internodeCount() == 648);
+    CHECK(plant.graph.budCount() == 433);
 }

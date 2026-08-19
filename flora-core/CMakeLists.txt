@@ -3,6 +3,7 @@ add_library(flora-core
     src/growth/simulation.cpp
     src/species/species.cpp
     src/species/species_io.cpp
+    src/structure/foliage.cpp
     src/structure/stem_graph.cpp)
 
 add_library(flora::core ALIAS flora-core)

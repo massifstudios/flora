@@ -73,6 +73,12 @@ struct SpeciesDefinition {
     // scale together until per-species tolerance separates them).
     SpeciesParameter shadowIntensity{{0.2f, 0.0f, 0.0f, 2.0f}, {}};
     SpeciesParameter shadowFalloff{{2.0f, 0.0f, 1.01f, 10.0f}, {}};
+    // Schema v2 (M7): foliage placement.
+    SpeciesParameter leafMaxBearingRadius{{0.02f, 0.0f, 0.001f, 0.5f}, {}};
+    SpeciesParameter leafClusterSpacing{{0.3f, 0.0f, 0.05f, 5.0f}, {}};
+    SpeciesParameter leafClusterScale{{0.35f, 0.0f, 0.01f, 5.0f}, {}};
+    SpeciesParameter leafDroop{{0.25f, 0.0f, -1.0f, 1.0f}, {}};
+    SpeciesParameter leafProductivity{{7.0f, 0.0f, 0.0f, 1000.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;

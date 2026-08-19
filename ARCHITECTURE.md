@@ -148,9 +148,17 @@ build O(casters × depth³), query O(1)). Per-bud light = external sample minus
 accumulated shadow (own contribution excluded); shaded buds steer toward the field's
 negative gradient. Fidelity is a simulation setting (`ShadeModel`): `Off` (reference
 path), `VoxelPropagation` (L2 default), `Raycast` (L3 hero: occupancy grid + fixed
-Fibonacci-hemisphere rays, transmittance-weighted light direction). Casters are
-bud-bearing tips until M7 switches them to foliage clusters. At forest scale the grid
-becomes shared per-cell rather than per-plant (§14).
+Fibonacci-hemisphere rays, transmittance-weighted light direction). Casters are foliage
+clusters (M7). At forest scale the grid becomes shared per-cell rather than per-plant
+(§14).
+
+Foliage (M7): clusters are derived data, recomputed from structure each step by a
+deterministic O(n) placement pass (live internodes with radius ≤ `leafMaxBearingRadius`,
+at least `leafClusterSpacing` apart along the axis path, droop-tilted orientation).
+Clusters are both the photosynthetic producers — energy = shaded light × cluster area ×
+`leafProductivity` — and the shadow casters, so thick leafless interior wood starves and
+sheds without any special-case rule. Leaf geometry is instanced cards in flora-geometry,
+never per-leaf simulation.
 
 ## 8. Determinism
 

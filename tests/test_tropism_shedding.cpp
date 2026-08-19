@@ -107,7 +107,7 @@ TEST_CASE("secondary thickening grows the trunk and preserves taper") {
     GrowthParameters parameters;
     parameters.dropWeakBranchRatio = 0.0f;
     parameters.shadeModel = ShadeModel::Off; // isolate thickening from light competition
-    const Plant plant = grownPlant(31, 15, parameters);
+    const Plant plant = grownPlant(31, 11, parameters); // below the internode cap
 
     const float rootRadius = plant.graph.internode(0).radius;
     CHECK(rootRadius > parameters.baseGrowthThickness * 3.0f);
@@ -142,12 +142,13 @@ TEST_CASE("radii never shrink during growth") {
 TEST_CASE("cost pressure sheds branches and keeps invariants") {
     GrowthParameters keepAll;
     keepAll.dropWeakBranchRatio = 0.0f;
-    GrowthParameters shedding;
+    keepAll.shadeModel = ShadeModel::Off; // isolate shedding from light competition
+    GrowthParameters shedding = keepAll;
     shedding.dropWeakBranchRatio = 1.0f;
-    shedding.maintenanceCostPerVolume = 20000.0f; // strong cost pressure
+    shedding.maintenanceCostPerVolume = 1.0e5f; // strong cost pressure
 
-    const Plant retained = grownPlant(35, 16, keepAll);
-    const Plant pruned = grownPlant(35, 16, shedding);
+    const Plant retained = grownPlant(35, 11, keepAll); // below the internode cap
+    const Plant pruned = grownPlant(35, 11, shedding);
 
     CHECK(pruned.graph.internodeCount() < retained.graph.internodeCount());
     std::string errors;

@@ -161,49 +161,44 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
     graph.computeTipPositions(context.tipPositions_);
     const auto& tipPositions = context.tipPositions_;
 
-    // Self-shading field: leafy tips (live internodes bearing live buds) cast
-    // shadow. Wood occlusion is ignored until foliage arrives (M7 replaces
-    // the caster set with foliage clusters).
-    const bool selfShading = parameters.shadeModel != ShadeModel::Off;
-    if (selfShading) {
+    // Foliage placement: clusters are the photosynthetic producers and the
+    // shadow casters. Thick interior wood bears no leaves, so it produces
+    // nothing and (under shading) starves into the shedding phase.
+    computeFoliagePlacement(graph, parameters, tipPositions, context.foliageScratch_,
+                            context.foliageClusters_);
+    const auto& foliage = context.foliageClusters_;
+
+    if (parameters.shadeModel != ShadeModel::Off) {
         auto& casters = context.casterPositions_;
         casters.clear();
-        for (std::size_t i = 0; i < internodeCount; ++i) {
-            if (graph.internode(static_cast<Index>(i)).alive &&
-                budOffsets[i + 1] > budOffsets[i]) {
-                casters.push_back(tipPositions[i]);
-            }
+        for (const FoliageCluster& cluster : foliage) {
+            casters.push_back(cluster.position);
         }
         context.shadowGrid_.build(
             casters,
             shadowSettings(parameters, parameters.shadeModel == ShadeModel::VoxelPropagation));
     }
 
-    auto& budLight = context.budLight_;
-    auto& budLightDirection = context.budLightDirection_;
-    budLight.assign(budCount, 0.0f);
-    budLightDirection.assign(budCount, kUpAxis);
-    for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
-        const Bud& bud = graph.bud(budIndex);
-        if (bud.state == BudState::Dead) {
-            continue;
-        }
-        const Vec3& position = tipPositions[bud.internode];
+    // Shaded light and dominant light direction at one position. Self
+    // contribution is excluded at caster voxels (Palubicki 2009:
+    // Q = max(0, C - s + a)); non-caster positions get the same allowance,
+    // a negligible brightening.
+    const auto sampleShadedLight = [&](const Vec3& position) -> LightSample {
         const LightSample base = environment.sampleLight(position);
-        float light = base.intensity;
-        Vec3 direction = base.direction;
         if (parameters.shadeModel == ShadeModel::VoxelPropagation) {
-            // A leafy tip shades its own voxel; remove that self-contribution
-            // (Palubicki 2009: Q = max(0, C - s + a)).
             const float shade = std::max(
                 0.0f, context.shadowGrid_.shadowAt(position) - parameters.shadowIntensity);
-            light = std::max(0.0f, base.intensity - shade);
+            LightSample shaded;
+            shaded.intensity = std::max(0.0f, base.intensity - shade);
+            shaded.direction = base.direction;
             if (shade > 0.0f) {
                 const Vec3 escape = context.shadowGrid_.openDirection(position, base.direction);
-                direction = (base.direction + escape * std::min(shade, 1.0f))
-                                .normalizedOr(base.direction);
+                shaded.direction = (base.direction + escape * std::min(shade, 1.0f))
+                                       .normalizedOr(base.direction);
             }
-        } else if (parameters.shadeModel == ShadeModel::Raycast) {
+            return shaded;
+        }
+        if (parameters.shadeModel == ShadeModel::Raycast) {
             const std::uint32_t rayCount = std::max(1u, parameters.raycastRayCount);
             float transmitted = 0.0f;
             Vec3 weightedDirection{0.0f, 0.0f, 0.0f};
@@ -214,21 +209,35 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 transmitted += transmittance;
                 weightedDirection += rayDirection * transmittance;
             }
-            light = base.intensity * (transmitted / static_cast<float>(rayCount));
-            direction = weightedDirection.normalizedOr(base.direction);
+            return {base.intensity * (transmitted / static_cast<float>(rayCount)),
+                    weightedDirection.normalizedOr(base.direction)};
         }
-        budLight[budIndex] = light;
-        budLightDirection[budIndex] = direction;
+        return base;
+    };
+
+    auto& budLight = context.budLight_;
+    auto& budLightDirection = context.budLightDirection_;
+    budLight.assign(budCount, 0.0f);
+    budLightDirection.assign(budCount, kUpAxis);
+    for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
+        const Bud& bud = graph.bud(budIndex);
+        if (bud.state == BudState::Dead) {
+            continue;
+        }
+        const LightSample sample = sampleShadedLight(tipPositions[bud.internode]);
+        budLight[budIndex] = sample.intensity;
+        budLightDirection[budIndex] = sample.direction;
     }
 
     // Phase 2 — accumulate energy and live wood volume rootward. Children
     // always have higher indices than parents, so one descending pass each.
+    // Production happens at foliage clusters.
     auto& energy = context.energy_;
     energy.assign(internodeCount, 0.0f);
-    for (std::size_t i = 0; i < internodeCount; ++i) {
-        for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
-            energy[i] += budLight[budIndices[slot]];
-        }
+    for (const FoliageCluster& cluster : foliage) {
+        const float leafArea = kPi * cluster.scale * cluster.scale;
+        energy[cluster.internode] +=
+            sampleShadedLight(cluster.position).intensity * leafArea * parameters.leafProductivity;
     }
     for (std::size_t i = internodeCount; i-- > 0;) {
         const Index parent = graph.internode(static_cast<Index>(i)).parent;

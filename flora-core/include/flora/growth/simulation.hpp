@@ -6,6 +6,7 @@
 #include "flora/environment/environment.hpp"
 #include "flora/environment/shadow_grid.hpp"
 #include "flora/growth/parameters.hpp"
+#include "flora/structure/foliage.hpp"
 #include "flora/structure/stem_graph.hpp"
 
 namespace flora {
@@ -32,11 +33,16 @@ public:
     // step start). Read-only diagnostics for tools and tests.
     const std::vector<float>& lastBudLight() const { return budLight_; }
 
+    // Foliage clusters placed during the last executed step's phase 1.
+    const std::vector<FoliageCluster>& lastFoliage() const { return foliageClusters_; }
+
 private:
     std::vector<std::uint32_t> budOffsets_; // CSR: buds grouped by internode
     std::vector<Index> budIndices_;
     std::vector<Vec3> tipPositions_;  // per internode, phase 1
-    std::vector<Vec3> casterPositions_; // leafy tips shading the voxel field
+    std::vector<FoliageCluster> foliageClusters_; // phase 1 placement
+    std::vector<float> foliageScratch_;
+    std::vector<Vec3> casterPositions_; // cluster positions shading the voxel field
     std::vector<float> budLight_;     // per bud, phase 1
     std::vector<Vec3> budLightDirection_; // per bud, phase 1
     std::vector<float> energy_;      // per internode, phase 2

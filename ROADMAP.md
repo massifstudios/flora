@@ -44,7 +44,7 @@ Voxel shadow-propagation backend + analytic sky; environment query interface fin
 self-shading changes morphology tests; hero raycast backend (L3) behind same interface.
 Light query benchmarks.
 
-## M7 — Foliage
+## M7 — Foliage  ✅
 
 Cluster placement from structure (threshold/spacing/droop), foliage geometry instancing,
 leaf-shade coupling into light backend.
