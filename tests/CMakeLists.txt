@@ -1,5 +1,6 @@
 add_executable(flora-tests
     test_main.cpp
+    test_species.cpp
     test_branch_mesh.cpp
     test_growth.cpp
     test_rng.cpp

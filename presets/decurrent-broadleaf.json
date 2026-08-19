@@ -1,0 +1,25 @@
+{
+  "format": "flora-species",
+  "version": 1,
+  "name": "Decurrent Broadleaf",
+  "parameters": {
+    "baseGrowthLength": {"mean": 0.4, "stddev": 0.04, "min": 0.15, "max": 0.8},
+    "baseGrowthThickness": 0.01,
+    "apicalControl": {
+      "mean": 0.62,
+      "stddev": 0.03,
+      "min": 0.4,
+      "max": 0.9,
+      "overAge": [[0, 0.75], [15, 0.62], [40, 0.55]]
+    },
+    "vigorScale": {"mean": 1.0, "stddev": 0.05, "min": 0.5, "max": 2.0},
+    "activationThreshold": 0.5,
+    "branchAngle": {"mean": 38.0, "stddev": 6.0, "min": 15.0, "max": 75.0},
+    "branchAngleJitter": 5.0,
+    "phyllotaxisAngle": 137.5,
+    "maxMetamersPerShoot": 3,
+    "lateralBudsPerMetamer": 1,
+    "budDormancyLimit": 3,
+    "maxInternodes": 100000
+  }
+}

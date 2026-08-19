@@ -1,0 +1,73 @@
+#include "flora/species/species.hpp"
+
+#include <algorithm>
+
+namespace flora {
+
+float Distribution::valueFor(float zScore, float meanValue) const {
+    return std::clamp(meanValue + zScore * stddev, minimum, maximum);
+}
+
+float AgeCurve::evaluate(float ageSteps) const {
+    if (points.empty()) {
+        return 0.0f;
+    }
+    if (ageSteps <= points.front().first) {
+        return points.front().second;
+    }
+    if (ageSteps >= points.back().first) {
+        return points.back().second;
+    }
+    for (std::size_t i = 1; i < points.size(); ++i) {
+        if (ageSteps <= points[i].first) {
+            const auto& [age0, value0] = points[i - 1];
+            const auto& [age1, value1] = points[i];
+            const float span = age1 - age0;
+            const float blend = span > 0.0f ? (ageSteps - age0) / span : 0.0f;
+            return value0 + (value1 - value0) * blend;
+        }
+    }
+    return points.back().second;
+}
+
+float SpeciesParameter::value(float zScore, float ageSteps) const {
+    const float mean = meanOverAge.empty() ? distribution.mean : meanOverAge.evaluate(ageSteps);
+    return distribution.valueFor(zScore, mean);
+}
+
+GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
+                                             std::uint64_t plantSeed, std::uint32_t ageSteps) {
+    auto stream = RandomStream::derive(plantSeed, RngPurpose::SpeciesVariation);
+    const float age = static_cast<float>(ageSteps);
+
+    // Fixed draw order; append only (species.hpp).
+    GrowthParameters parameters;
+    parameters.baseGrowthLength = species.baseGrowthLength.value(stream.normal(0.0f, 1.0f), age);
+    parameters.baseGrowthThickness =
+        species.baseGrowthThickness.value(stream.normal(0.0f, 1.0f), age);
+    parameters.apicalControl = species.apicalControl.value(stream.normal(0.0f, 1.0f), age);
+    parameters.vigorScale = species.vigorScale.value(stream.normal(0.0f, 1.0f), age);
+    parameters.activationThreshold =
+        species.activationThreshold.value(stream.normal(0.0f, 1.0f), age);
+    parameters.branchAngle = species.branchAngle.value(stream.normal(0.0f, 1.0f), age);
+    parameters.branchAngleJitter =
+        species.branchAngleJitter.value(stream.normal(0.0f, 1.0f), age);
+    parameters.phyllotaxisAngle = species.phyllotaxisAngle.value(stream.normal(0.0f, 1.0f), age);
+
+    parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
+    parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;
+    parameters.budDormancyLimit = species.budDormancyLimit;
+    parameters.maxInternodes = species.maxInternodes;
+    return parameters;
+}
+
+void grow(Plant& plant, const SpeciesDefinition& species, const ConstantEnvironment& environment,
+          std::uint32_t steps, GrowthContext& context) {
+    for (std::uint32_t i = 0; i < steps; ++i) {
+        const GrowthParameters parameters =
+            materializeGrowthParameters(species, plant.seed, plant.ageSteps);
+        growStep(plant, parameters, environment, context);
+    }
+}
+
+} // namespace flora

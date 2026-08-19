@@ -1,11 +1,14 @@
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "flora/geometry/branch_mesh.hpp"
 #include "flora/growth/simulation.hpp"
-#include "flora/rng/random.hpp"
+#include "flora/species/species.hpp"
+#include "flora/species/species_io.hpp"
 #include "flora/structure/stem_graph.hpp"
 #include "flora/version.hpp"
 
@@ -13,36 +16,7 @@ using namespace flora;
 
 namespace {
 
-struct Preset {
-    const char* name;
-    const char* blurb;
-    GrowthParameters parameters;
-};
-
-// Built-in parameter presets demonstrating species-like variation. Replaced by
-// data-driven species definitions (JSON, distributions) in M4.
-std::vector<Preset> builtinPresets() {
-    Preset excurrent;
-    excurrent.name = "excurrent";
-    excurrent.blurb = "strong apical control, narrow conifer-like habit";
-    excurrent.parameters.apicalControl = 0.82f;
-    excurrent.parameters.branchAngle = 1.1344640f; // 65 deg, flat whorled branches
-    excurrent.parameters.lateralBudsPerMetamer = 2;
-    excurrent.parameters.baseGrowthLength = 0.30f;
-
-    Preset decurrent;
-    decurrent.name = "decurrent";
-    decurrent.blurb = "weak apical control, spreading broadleaf-like habit";
-    decurrent.parameters.apicalControl = 0.55f;
-    decurrent.parameters.branchAngle = 0.6108652f; // 35 deg
-    decurrent.parameters.lateralBudsPerMetamer = 1;
-    decurrent.parameters.baseGrowthLength = 0.40f;
-
-    return {excurrent, decurrent};
-}
-
 // Skeleton preview: OBJ line elements, one polyline segment per internode.
-// Openable in Blender / MeshLab. Solid meshing arrives with flora-geometry (M3).
 bool writeSkeletonObj(const StemGraph& graph, const char* path) {
     std::FILE* file = std::fopen(path, "w");
     if (file == nullptr) {
@@ -97,27 +71,26 @@ bool writeMeshObj(const Mesh& mesh, const char* path) {
 }
 
 int printUsage() {
-    std::printf("flora %u.%u.%u (simulation revision %u)\n", kVersionMajor, kVersionMinor,
-                kVersionPatch, kSimulationRevision);
+    std::printf("flora %u.%u.%u (simulation revision %u, species schema v%u)\n", kVersionMajor,
+                kVersionMinor, kVersionPatch, kSimulationRevision, kSpeciesSchemaVersion);
     std::printf("usage:\n");
     std::printf("  flora version\n");
-    std::printf("  flora presets                          list built-in parameter presets\n");
     std::printf("  flora grow <seed> <steps> [options]    grow one plant, print stats\n");
     std::printf("options:\n");
-    std::printf("    --preset <name>      parameter preset (default: decurrent)\n");
+    std::printf("    --species <file>     species definition JSON (see presets/)\n");
     std::printf("    --obj <path>         write solid branch mesh OBJ (Blender/MeshLab)\n");
     std::printf("    --skeleton <path>    write skeleton line OBJ (debug view)\n");
     return 1;
 }
 
-int runGrow(std::uint64_t seed, std::uint32_t steps, const Preset& preset, const char* objPath,
-            const char* skeletonPath) {
+int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& species,
+            const char* objPath, const char* skeletonPath) {
     Plant plant;
     plant.seed = seed;
-    plantSeedling(plant, preset.parameters);
+    plantSeedling(plant, materializeGrowthParameters(species, seed, 0));
 
     GrowthContext context;
-    grow(plant, preset.parameters, ConstantEnvironment{}, steps, context);
+    grow(plant, species, ConstantEnvironment{}, steps, context);
 
     std::string errors;
     const bool valid = plant.graph.validate(&errors);
@@ -140,7 +113,7 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const Preset& preset, const
         }
     }
 
-    std::printf("preset:      %s (%s)\n", preset.name, preset.blurb);
+    std::printf("species:     %s\n", species.name.c_str());
     std::printf("seed:        %llu\n", static_cast<unsigned long long>(seed));
     std::printf("age:         %u steps\n", plant.ageSteps);
     std::printf("internodes:  %zu\n", plant.graph.internodeCount());
@@ -188,34 +161,29 @@ int main(int argc, char** argv) {
         return printUsage();
     }
     if (std::strcmp(argv[1], "version") == 0) {
-        std::printf("flora %u.%u.%u (simulation revision %u)\n", kVersionMajor, kVersionMinor,
-                    kVersionPatch, kSimulationRevision);
-        return 0;
-    }
-    const std::vector<Preset> presets = builtinPresets();
-    if (std::strcmp(argv[1], "presets") == 0) {
-        for (const Preset& preset : presets) {
-            std::printf("%-12s %s\n", preset.name, preset.blurb);
-        }
+        std::printf("flora %u.%u.%u (simulation revision %u, species schema v%u)\n", kVersionMajor,
+                    kVersionMinor, kVersionPatch, kSimulationRevision, kSpeciesSchemaVersion);
         return 0;
     }
     if (std::strcmp(argv[1], "grow") == 0 && argc >= 4) {
         const std::uint64_t seed = std::stoull(argv[2]);
         const std::uint32_t steps = static_cast<std::uint32_t>(std::stoul(argv[3]));
-        const Preset* preset = &presets[1]; // decurrent default
+        SpeciesDefinition species;
         const char* objPath = nullptr;
         const char* skeletonPath = nullptr;
         for (int i = 4; i < argc; ++i) {
-            if (std::strcmp(argv[i], "--preset") == 0 && i + 1 < argc) {
-                const char* name = argv[++i];
-                preset = nullptr;
-                for (const Preset& candidate : presets) {
-                    if (std::strcmp(candidate.name, name) == 0) {
-                        preset = &candidate;
-                    }
+            if (std::strcmp(argv[i], "--species") == 0 && i + 1 < argc) {
+                const char* path = argv[++i];
+                std::ifstream file(path);
+                if (!file) {
+                    std::printf("cannot open species file: %s\n", path);
+                    return 1;
                 }
-                if (preset == nullptr) {
-                    std::printf("unknown preset: %s\n", name);
+                std::ostringstream text;
+                text << file.rdbuf();
+                std::string error;
+                if (!loadSpeciesFromJson(text.str(), species, &error)) {
+                    std::printf("invalid species file %s: %s\n", path, error.c_str());
                     return 1;
                 }
             } else if (std::strcmp(argv[i], "--obj") == 0 && i + 1 < argc) {
@@ -226,7 +194,7 @@ int main(int argc, char** argv) {
                 return printUsage();
             }
         }
-        return runGrow(seed, steps, *preset, objPath, skeletonPath);
+        return runGrow(seed, steps, species, objPath, skeletonPath);
     }
     return printUsage();
 }
