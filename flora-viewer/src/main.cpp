@@ -28,6 +28,9 @@
 #ifdef FLORA_VIEWER_PNG
 #include <png.h>
 #endif
+#ifdef FLORA_VIEWER_JPEG
+#include <jpeglib.h>
+#endif
 
 #include "flora/geometry/branch_mesh.hpp"
 #include "flora/geometry/foliage_cards.hpp"
@@ -68,25 +71,111 @@ Color lightColor(float light) {
 // Textures are diagnostic dressing: colour maps only. Normal and roughness
 // maps are carried by the material set for exporters and engines, which is
 // where they can actually be shaded; fixed-function OpenGL cannot use them.
+struct Image {
+    std::vector<unsigned char> pixels;
+    unsigned width = 0;
+    unsigned height = 0;
+    unsigned channels = 0; // 3 = RGB, 4 = RGBA
+};
+
+// Texture packs routinely ship a JPEG under a .png name, so the format comes
+// from the file's own signature rather than its extension.
+bool readSignature(const std::string& path, unsigned char signature[4]) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        std::fprintf(stderr, "texture %s: cannot open\n", path.c_str());
+        return false;
+    }
+    file.read(reinterpret_cast<char*>(signature), 4);
+    return file.gcount() == 4;
+}
+
+bool loadPng(const std::string& path, Image& image) {
+#ifdef FLORA_VIEWER_PNG
+    png_image reader{};
+    reader.version = PNG_IMAGE_VERSION;
+    if (png_image_begin_read_from_file(&reader, path.c_str()) == 0) {
+        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), reader.message);
+        return false;
+    }
+    reader.format = PNG_FORMAT_RGBA;
+    image.pixels.resize(PNG_IMAGE_SIZE(reader));
+    if (png_image_finish_read(&reader, nullptr, image.pixels.data(), 0, nullptr) == 0) {
+        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), reader.message);
+        png_image_free(&reader);
+        return false;
+    }
+    image.width = reader.width;
+    image.height = reader.height;
+    image.channels = 4;
+    return true;
+#else
+    std::fprintf(stderr, "texture %s ignored: viewer built without libpng\n", path.c_str());
+    return false;
+#endif
+}
+
+bool loadJpeg(const std::string& path, Image& image) {
+#ifdef FLORA_VIEWER_JPEG
+    std::FILE* file = std::fopen(path.c_str(), "rb");
+    if (file == nullptr) {
+        std::fprintf(stderr, "texture %s: cannot open\n", path.c_str());
+        return false;
+    }
+    jpeg_decompress_struct info{};
+    jpeg_error_mgr errors{};
+    info.err = jpeg_std_error(&errors);
+    jpeg_create_decompress(&info);
+    jpeg_stdio_src(&info, file);
+    jpeg_read_header(&info, TRUE);
+    info.out_color_space = JCS_RGB;
+    jpeg_start_decompress(&info);
+
+    image.width = info.output_width;
+    image.height = info.output_height;
+    image.channels = 3;
+    image.pixels.resize(static_cast<std::size_t>(image.width) * image.height * 3);
+    const std::size_t stride = static_cast<std::size_t>(image.width) * 3;
+    while (info.output_scanline < info.output_height) {
+        unsigned char* row = image.pixels.data() + info.output_scanline * stride;
+        jpeg_read_scanlines(&info, &row, 1);
+    }
+    jpeg_finish_decompress(&info);
+    jpeg_destroy_decompress(&info);
+    std::fclose(file);
+    return true;
+#else
+    std::fprintf(stderr, "texture %s ignored: viewer built without libjpeg\n", path.c_str());
+    return false;
+#endif
+}
+
 GLuint uploadTexture(const std::string& path) {
     if (path.empty()) {
         return 0;
     }
-#ifdef FLORA_VIEWER_PNG
-    png_image image{};
-    image.version = PNG_IMAGE_VERSION;
-    if (png_image_begin_read_from_file(&image, path.c_str()) == 0) {
-        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), image.message);
-        return 0;
-    }
-    image.format = PNG_FORMAT_RGBA;
-    std::vector<png_byte> pixels(PNG_IMAGE_SIZE(image));
-    if (png_image_finish_read(&image, nullptr, pixels.data(), 0, nullptr) == 0) {
-        std::fprintf(stderr, "texture %s: %s\n", path.c_str(), image.message);
-        png_image_free(&image);
+    unsigned char signature[4] = {0, 0, 0, 0};
+    if (!readSignature(path, signature)) {
         return 0;
     }
 
+    Image image;
+    const bool isPng = signature[0] == 0x89 && signature[1] == 'P';
+    const bool isJpeg = signature[0] == 0xFF && signature[1] == 0xD8;
+    if (isPng) {
+        if (!loadPng(path, image)) {
+            return 0;
+        }
+    } else if (isJpeg) {
+        if (!loadJpeg(path, image)) {
+            return 0;
+        }
+    } else {
+        std::fprintf(stderr, "texture %s: unsupported format (PNG and JPEG only)\n", path.c_str());
+        return 0;
+    }
+
+    const GLint format = image.channels == 4 ? GL_RGBA : GL_RGB;
     GLuint texture = 0;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -94,15 +183,14 @@ GLuint uploadTexture(const std::string& path) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(image.width),
-                 static_cast<GLsizei>(image.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, static_cast<GLsizei>(image.width),
+                 static_cast<GLsizei>(image.height), 0, static_cast<GLenum>(format),
+                 GL_UNSIGNED_BYTE, image.pixels.data());
     glBindTexture(GL_TEXTURE_2D, 0);
-    std::printf("texture: %s (%ux%u)\n", path.c_str(), image.width, image.height);
+    std::printf("texture: %s (%ux%u, %s)\n", path.c_str(), image.width, image.height,
+                isPng ? "png" : "jpeg");
     return texture;
-#else
-    std::fprintf(stderr, "texture %s ignored: viewer built without libpng\n", path.c_str());
-    return 0;
-#endif
 }
 
 // Column-major 4x4 helpers for the fixed-function matrix stack.
@@ -201,6 +289,7 @@ void rebuildStructures(ViewerState& state) {
 
     BranchMeshParameters barkParameters;
     barkParameters.uvLengthScale = state.materials.barkUvLengthScale;
+    barkParameters.uvGirthScale = state.materials.barkUvLengthScale;
     if (state.useCards) {
         TwigCardParameters cardParameters;
         cardParameters.maxBearingRadius = parameters.leafMaxBearingRadius;

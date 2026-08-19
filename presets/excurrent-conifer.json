@@ -58,7 +58,7 @@
       "min": 0.0,
       "max": 0.3
     },
-    "thicknessGrowthFactor": 1.2e-06,
+    "thicknessGrowthFactor": 2e-05,
     "maintenanceCostPerVolume": 350.0,
     "dropWeakBranchRatio": 0.9,
     "shadowIntensity": 0.14,

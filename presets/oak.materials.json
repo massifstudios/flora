@@ -5,7 +5,6 @@
   "bark": {
     "color": "../textures/oak-bark-color.png",
     "normal": "../textures/oak-bark-normal.png",
-    "roughness": "../textures/oak-bark-roughness.png",
     "uvLengthScale": 1.2
   },
   "foliage": {

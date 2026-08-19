@@ -42,9 +42,10 @@ TEST_CASE("empty graph produces an empty mesh") {
 }
 
 TEST_CASE("single axis produces the expected vertex and triangle counts") {
-    const StemGraph graph = singleAxis(4, 0.2f); // thick: full radial segments
+    const StemGraph graph = singleAxis(4, 0.2f);
     BranchMeshParameters parameters;
     parameters.radialSegments = 8;
+    parameters.decimationRadiusMax = 0.1f; // stem is above it: full segments
     Mesh mesh;
     generateBranchMesh(graph, parameters, mesh);
 
@@ -135,13 +136,40 @@ TEST_CASE("pruned subtrees produce no geometry") {
 
 TEST_CASE("u coordinates stay within the wrap interval") {
     const Plant plant = grownPlant(3, 8);
+    BranchMeshParameters parameters;
+    parameters.uvGirthScale = 0.0f; // single wrap per ring
     Mesh mesh;
-    generateBranchMesh(plant.graph, BranchMeshParameters{}, mesh);
+    generateBranchMesh(plant.graph, parameters, mesh);
     for (const Vec2& uv : mesh.uvs) {
         CHECK(uv.x >= 0.0f);
         CHECK(uv.x <= 1.0f);
         CHECK(uv.y >= 0.0f);
     }
+}
+
+TEST_CASE("girth-scaled u repeats bark at its real-world size") {
+    const Plant plant = grownPlant(3, 8);
+    BranchMeshParameters parameters;
+    parameters.uvGirthScale = 0.25f; // a 0.25 m tile around the stem
+    Mesh mesh;
+    generateBranchMesh(plant.graph, parameters, mesh);
+
+    float widestCircumference = 0.0f;
+    for (const Internode& node : plant.graph.internodes()) {
+        if (node.alive) {
+            widestCircumference = std::max(widestCircumference, 6.2831853f * node.radius);
+        }
+    }
+    const float maximumRepeats = widestCircumference / parameters.uvGirthScale;
+
+    float widestU = 0.0f;
+    for (const Vec2& uv : mesh.uvs) {
+        CHECK(uv.x >= 0.0f);
+        widestU = std::max(widestU, uv.x);
+    }
+    CHECK(widestU <= maximumRepeats + 0.001f);
+    // A stem thicker than the tile must wrap the tile more than once.
+    CHECK(widestU > 1.0f);
 }
 
 TEST_CASE("pipe-model display radii thicken the trunk") {

@@ -140,15 +140,19 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
                                          ? radius[axis[ring]]
                                          : radius[axis[axisLength - 1]] * parameters.tipTaper;
 
+            const float uRepeats = parameters.uvGirthScale > 0.0f
+                                       ? kTwoPi * ringRadius / parameters.uvGirthScale
+                                       : 1.0f;
+
             const std::uint32_t ringStart = static_cast<std::uint32_t>(mesh.positions.size());
             for (std::uint32_t s = 0; s <= segments; ++s) {
-                const float angle = kTwoPi * static_cast<float>(s) / static_cast<float>(segments);
+                const float around = static_cast<float>(s) / static_cast<float>(segments);
+                const float angle = kTwoPi * around;
                 const Vec3 radial =
                     frameNormal * std::cos(angle) + frameBinormal * std::sin(angle);
                 mesh.positions.push_back(center + radial * ringRadius);
                 mesh.normals.push_back(radial);
-                mesh.uvs.push_back({static_cast<float>(s) / static_cast<float>(segments),
-                                    vCoordinate});
+                mesh.uvs.push_back({around * uRepeats, vCoordinate});
             }
 
             if (ring > 0) {

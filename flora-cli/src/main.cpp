@@ -186,6 +186,8 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& sp
 
     if (objPath != nullptr) {
         BranchMeshParameters meshParameters; // stored radii: simulated by M5 thickening
+        meshParameters.uvLengthScale = materials.barkUvLengthScale;
+        meshParameters.uvGirthScale = materials.barkUvLengthScale;
         Mesh leaves;
         std::size_t cardCount = 0;
         if (foliageMode == FoliageMode::TwigCards) {
