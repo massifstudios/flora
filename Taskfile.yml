@@ -51,7 +51,7 @@ tasks:
       - ./{{.BUILD_DIR}}/flora-cli/flora grow 7 45 --species presets/excurrent-conifer.json --obj conifer.obj
       - >-
         ./{{.BUILD_DIR}}/flora-cli/flora grow 11 40 --species presets/oak.json
-        --materials presets/oak.materials.json --obj oak.obj
+        --materials presets/oak.materials.json --shade raycast --obj oak.obj
 
   view:
     desc: "Open the interactive viewer; args after -- (default: broadleaf, 35 steps)"
