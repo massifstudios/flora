@@ -181,7 +181,14 @@ int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& sp
         materializeGrowthParameters(species, seed, plant.ageSteps);
     std::vector<FoliageCluster> clusters;
     computeFoliagePlacement(plant.graph, finalParameters, tips, clusters);
-    std::printf("foliage:     %zu clusters\n", clusters.size());
+    float crownBase = height;
+    for (const FoliageCluster& cluster : clusters) {
+        crownBase = std::min(crownBase, cluster.position.z);
+    }
+    std::printf("foliage:     %zu clusters, crown base %.2f m\n", clusters.size(),
+                static_cast<double>(clusters.empty() ? 0.0f : crownBase));
+    std::printf("trunk:       %.2f m diameter at base\n",
+                static_cast<double>(2.0f * plant.graph.internode(0).radius));
     std::printf("invariants:  %s\n", valid ? "ok" : errors.c_str());
 
     if (objPath != nullptr) {
