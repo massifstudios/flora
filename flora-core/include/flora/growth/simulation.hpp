@@ -42,7 +42,7 @@ private:
     std::vector<Vec3> tipPositions_;  // per internode, phase 1
     std::vector<float> pathLength_;   // per internode, stem path from root to tip
     std::vector<FoliageCluster> foliageClusters_; // phase 1 placement
-    std::vector<float> foliageScratch_;
+    FoliagePlacementScratch foliageScratch_;
     std::vector<Vec3> casterPositions_; // cluster positions shading the voxel field
     std::vector<char> budSuppressed_;  // per bud, apical dominance, phase 1
     std::vector<float> distanceToApex_; // per internode, along its own axis
@@ -52,7 +52,10 @@ private:
     std::vector<float> energy_;      // per internode, phase 2
     std::vector<float> woodVolume_;  // per internode subtree, phase 2
     std::vector<float> resource_;    // per internode, phase 4
+    std::vector<float> budWeight_;   // per bud, brightness-weighted light, phase 4
     std::vector<float> budResource_; // per bud, phase 4
+    std::vector<float> loadVolume_;  // per internode subtree, phase 7b
+    std::vector<Vec3> loadMoment_;   // per internode subtree, volume-weighted position
     std::vector<std::pair<float, Index>> shedCandidates_; // (viability, index), phase 3
     ShadowVoxelGrid shadowGrid_;     // phase 1 self-shading field
 };

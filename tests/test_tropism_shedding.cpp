@@ -201,3 +201,100 @@ TEST_CASE("deadwood decays after the configured delay") {
     std::string errors;
     CHECK_MESSAGE(graph.validate(&errors), errors);
 }
+
+TEST_CASE("bending sags a loaded limb and leaves an unloaded one straight") {
+    GrowthParameters parameters = steeringOnly();
+    parameters.branchStiffness = 1.0e4f;
+    parameters.bendIntegration = 0.5f;
+
+    // A horizontal cantilever carrying wood, versus the same stem bare.
+    StemGraph loaded;
+    Index tip = loaded.addRoot(Vec3{1.0f, 0.0f, 0.0f}, 1.0f, 0.05f, 0);
+    for (int i = 0; i < 6; ++i) {
+        tip = loaded.addInternode(tip, AxisRelation::Continuation, Vec3{1.0f, 0.0f, 0.0f}, 1.0f,
+                                  0.05f, 0);
+    }
+    StemGraph bare;
+    bare.addRoot(Vec3{1.0f, 0.0f, 0.0f}, 1.0f, 0.05f, 0);
+
+    Plant loadedPlant;
+    loadedPlant.graph = loaded;
+    Plant barePlant;
+    barePlant.graph = bare;
+    GrowthContext context;
+    growStep(loadedPlant, parameters, ConstantEnvironment{0.0f}, context);
+    growStep(barePlant, parameters, ConstantEnvironment{0.0f}, context);
+
+    // Both sag under their own weight; the one carrying six more internodes
+    // sags far more.
+    CHECK(loadedPlant.graph.internode(0).direction.z < -0.01f);
+    CHECK(loadedPlant.graph.internode(0).direction.z < barePlant.graph.internode(0).direction.z);
+}
+
+TEST_CASE("stiffer wood and weaker integration both bend less") {
+    auto sagOf = [](float stiffness, float integration) {
+        GrowthParameters parameters = steeringOnly();
+        parameters.branchStiffness = stiffness;
+        parameters.bendIntegration = integration;
+        StemGraph graph;
+        Index tip = graph.addRoot(Vec3{1.0f, 0.0f, 0.0f}, 1.0f, 0.05f, 0);
+        for (int i = 0; i < 6; ++i) {
+            tip = graph.addInternode(tip, AxisRelation::Continuation, Vec3{1.0f, 0.0f, 0.0f}, 1.0f,
+                                     0.05f, 0);
+        }
+        Plant plant;
+        plant.graph = graph;
+        GrowthContext context;
+        growStep(plant, parameters, ConstantEnvironment{0.0f}, context);
+        return -plant.graph.internode(0).direction.z;
+    };
+    // Stiffnesses chosen below the per-step bend cap so the comparison is not
+    // between two clamped values.
+    CHECK(sagOf(1.0e6f, 0.5f) > sagOf(1.0e7f, 0.5f));
+    CHECK(sagOf(1.0e6f, 0.5f) > sagOf(1.0e6f, 0.25f));
+    CHECK(sagOf(1.0e6f, 0.0f) == doctest::Approx(0.0f)); // disabled
+}
+
+TEST_CASE("bending accumulates over steps and stays bounded") {
+    GrowthParameters parameters = steeringOnly();
+    parameters.branchStiffness = 1.0e4f;
+    parameters.bendIntegration = 0.5f;
+    StemGraph graph;
+    Index tip = graph.addRoot(Vec3{1.0f, 0.0f, 0.0f}, 1.0f, 0.05f, 0);
+    for (int i = 0; i < 6; ++i) {
+        tip = graph.addInternode(tip, AxisRelation::Continuation, Vec3{1.0f, 0.0f, 0.0f}, 1.0f,
+                                 0.05f, 0);
+    }
+    Plant plant;
+    plant.graph = graph;
+    GrowthContext context;
+    float previous = 0.0f;
+    for (int step = 0; step < 12; ++step) {
+        growStep(plant, parameters, ConstantEnvironment{0.0f}, context);
+        const float sag = -plant.graph.internode(0).direction.z;
+        CHECK(sag >= previous - 1.0e-5f); // permanent: never springs back
+        CHECK(plant.graph.internode(0).direction.isFinite());
+        previous = sag;
+    }
+    CHECK(previous <= 1.0f);
+    CHECK(plant.graph.validate());
+}
+
+TEST_CASE("apical-weighted thickening keeps suppressed laterals slimmer") {
+    auto lateralShare = [](float apicalWeight) {
+        GrowthParameters parameters;
+        parameters.thicknessApicalWeight = apicalWeight;
+        parameters.apicalControl = 0.85f; // leader takes most of the resource
+        Plant plant = grownPlant(4, 14, parameters);
+        float trunk = 0.0f;
+        float laterals = 0.0f;
+        for (const Internode& node : plant.graph.internodes()) {
+            if (!node.alive) {
+                continue;
+            }
+            (node.branchOrder == 0 ? trunk : laterals) += node.radius;
+        }
+        return trunk > 0.0f ? laterals / trunk : 0.0f;
+    };
+    CHECK(lateralShare(1.0f) < lateralShare(0.0f));
+}

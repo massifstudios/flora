@@ -175,3 +175,53 @@ TEST_CASE("raycast backend grows a valid tree distinct from the voxel backend") 
     std::string errors;
     CHECK_MESSAGE(raycastPlant.graph.validate(&errors), errors);
 }
+
+TEST_CASE("no sky is visible below the ground plane") {
+    SkyEnvironment sky;
+    CHECK(sky.sampleLight(Vec3{0.0f, 0.0f, 5.0f}).intensity > 0.0f);
+    CHECK(sky.sampleLight(Vec3{0.0f, 0.0f, -0.5f}).intensity == 0.0f);
+    CHECK(sky.sampleLight(Vec3{0.0f, 0.0f, -0.5f}).direction.isFinite());
+}
+
+TEST_CASE("raycast sky weights the zenith over the horizon") {
+    // A caster directly overhead must cost more light than the same caster off
+    // to the side: cosine weighting is what keeps a shaded understorey dark.
+    GrowthParameters parameters;
+    parameters.shadeModel = ShadeModel::Raycast;
+    parameters.shadowIntensity = 1.0f;
+
+    auto lightUnder = [&](const Vec3& casterOffset) {
+        StemGraph graph;
+        graph.addRoot(kUpAxis, 0.1f, 0.005f, 0);
+        Plant plant;
+        plant.graph = graph;
+        GrowthContext context;
+        ShadowVoxelGrid grid;
+        ShadowVoxelGrid::Settings settings;
+        settings.shadowIntensity = parameters.shadowIntensity;
+        settings.shadowDepth = 0;
+        std::vector<Vec3> casters;
+        casters.push_back(Vec3{}); // anchors the grid over the sample point
+        for (int i = -6; i <= 6; ++i) {
+            for (int j = -6; j <= 6; ++j) {
+                casters.push_back(casterOffset +
+                                  Vec3{static_cast<float>(i) * 0.4f, static_cast<float>(j) * 0.4f, 0.0f});
+            }
+        }
+        grid.build(casters, settings);
+        float transmitted = 0.0f;
+        float weightTotal = 0.0f;
+        for (std::uint32_t ray = 0; ray < 64; ++ray) {
+            const float zenith = (static_cast<float>(ray) + 0.5f) / 64.0f;
+            const float azimuth = 2.3999632f * static_cast<float>(ray);
+            const float radial = std::sqrt(std::max(0.0f, 1.0f - zenith * zenith));
+            const Vec3 direction{radial * std::cos(azimuth), radial * std::sin(azimuth), zenith};
+            const float weight = direction.z;
+            transmitted += grid.transmittanceAlong(Vec3{}, direction, 1.0f) * weight;
+            weightTotal += weight;
+        }
+        return transmitted / weightTotal;
+    };
+
+    CHECK(lightUnder(Vec3{0.0f, 0.0f, 4.0f}) < lightUnder(Vec3{8.0f, 0.0f, 1.0f}));
+}

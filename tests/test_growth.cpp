@@ -223,3 +223,68 @@ TEST_CASE("regression: pinned structure for default parameters (column shading)"
     CHECK(plant.graph.internodeCount() == 28222);
     CHECK(plant.graph.budCount() == 23681);
 }
+
+TEST_CASE("shaded terminal growth is dropped, lit growth is kept") {
+    auto liveInternodes = [](float dropLight, float light) {
+        GrowthParameters parameters;
+        parameters.dropShadedGrowthLight = dropLight;
+        parameters.shadeModel = ShadeModel::Off; // uniform light isolates the threshold
+        Plant plant;
+        plant.seed = 5;
+        plantSeedling(plant, parameters);
+        GrowthContext context;
+        grow(plant, parameters, ConstantEnvironment{light}, 8, context);
+        std::size_t live = 0;
+        for (const Internode& node : plant.graph.internodes()) {
+            live += node.alive ? 1 : 0;
+        }
+        return live;
+    };
+    // Same light, same growth: only the threshold differs.
+    CHECK(liveInternodes(0.8f, 0.6f) < liveInternodes(0.0f, 0.6f));
+    // A threshold below the ambient light drops nothing.
+    CHECK(liveInternodes(0.4f, 0.6f) == liveInternodes(0.0f, 0.6f));
+}
+
+TEST_CASE("shaded-growth culling never orphans structure") {
+    GrowthParameters parameters;
+    parameters.dropShadedGrowthLight = 0.5f;
+    Plant plant;
+    plant.seed = 9;
+    plantSeedling(plant, parameters);
+    GrowthContext context;
+    for (int step = 0; step < 12; ++step) {
+        grow(plant, parameters, ConstantEnvironment{0.55f}, 1, context);
+        std::string errors;
+        REQUIRE_MESSAGE(plant.graph.validate(&errors), errors);
+    }
+}
+
+TEST_CASE("brightness priority concentrates growth in the lit part of the crown") {
+    // Buds differ in light only through self-shading, so a higher exponent must
+    // shift structure toward the brighter buds rather than change the total.
+    auto shadedFraction = [](float priority) {
+        GrowthParameters parameters;
+        parameters.brightGrowthPriority = priority;
+        parameters.shadeModel = ShadeModel::VerticalExtinction;
+        parameters.shadowIntensity = 0.15f;
+        Plant plant;
+        plant.seed = 3;
+        plantSeedling(plant, parameters);
+        GrowthContext context;
+        grow(plant, parameters, ConstantEnvironment{1.0f}, 18, context);
+
+        const std::vector<float>& budLight = context.lastBudLight();
+        float lit = 0.0f;
+        float total = 0.0f;
+        for (std::size_t i = 0; i < budLight.size(); ++i) {
+            if (plant.graph.bud(static_cast<Index>(i)).state == BudState::Dead) {
+                continue;
+            }
+            total += 1.0f;
+            lit += budLight[i];
+        }
+        return total > 0.0f ? lit / total : 0.0f;
+    };
+    CHECK(shadedFraction(3.0f) > shadedFraction(1.0f)); // surviving buds are better lit
+}

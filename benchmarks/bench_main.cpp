@@ -215,7 +215,7 @@ int main() {
 
         std::vector<Vec3> tips;
         plant.graph.computeTipPositions(tips);
-        std::vector<float> scratch;
+        FoliagePlacementScratch scratch;
         std::vector<FoliageCluster> clusters;
         registry.run("foliage/placement_100k_internodes", internodes, "internode", [&] {
             computeFoliagePlacement(plant.graph, growthParameters, tips, scratch, clusters);

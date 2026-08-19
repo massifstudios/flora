@@ -18,14 +18,22 @@ struct FoliageCluster {
     float scale = 0.0f;              // cluster radius, meters
 };
 
-// Deterministic single pass in index order, O(internodes): live internodes
-// with radius <= leafMaxBearingRadius bear clusters, at least
-// leafClusterSpacing apart along the axis path (spacing carries across
-// junctions). tipPositions must come from computeTipPositions on the same
-// graph. distanceScratch is caller-owned so per-step calls allocate nothing.
+// Caller-owned buffers so per-step placement allocates nothing.
+struct FoliagePlacementScratch {
+    std::vector<float> spacing;     // axis-path distance since the last cluster
+    std::vector<float> tipDistance; // stem path to the nearest live tip beyond
+};
+
+// Deterministic, O(internodes) in two index-order passes: live internodes
+// within leafBearingTipDistance of a tip and no thicker than
+// leafMaxBearingRadius bear clusters, at least leafClusterSpacing apart along
+// the axis path (spacing carries across junctions). Leaves sit on young shoots,
+// so proximity to a tip is the primary rule; the radius cap only keeps them off
+// stubs that a shed branch left near the surface. tipPositions must come from
+// computeTipPositions on the same graph.
 void computeFoliagePlacement(const StemGraph& graph, const GrowthParameters& parameters,
                              const std::vector<Vec3>& tipPositions,
-                             std::vector<float>& distanceScratch,
+                             FoliagePlacementScratch& scratch,
                              std::vector<FoliageCluster>& clusters);
 
 // Convenience overload for tools and tests; allocates its own scratch.

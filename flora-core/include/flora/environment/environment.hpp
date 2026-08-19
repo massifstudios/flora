@@ -34,17 +34,23 @@ public:
     LightSample sampleLight(const Vec3&) const override { return {light, lightDirection}; }
 };
 
-// Analytic sky: isotropic ambient dome plus one directional sun. Spatially
-// uniform until terrain/horizon occlusion arrives with the forest milestones.
+// Analytic sky: isotropic ambient dome plus one directional sun, over an opaque
+// ground plane. Spatially uniform above ground until terrain/horizon occlusion
+// arrives with the forest milestones.
 class SkyEnvironment final : public Environment {
 public:
     float ambient = 0.4f;
     float sunIntensity = 0.6f;
     Vec3 sunDirection{0.35f, 0.0f, 0.94f}; // unit vector toward the sun
+    float groundHeight = 0.0f;             // no sky is visible below this
 
-    LightSample sampleLight(const Vec3&) const override {
+    LightSample sampleLight(const Vec3& position) const override {
         const Vec3 combined = kUpAxis * ambient + sunDirection * sunIntensity;
-        return {ambient + sunIntensity, combined.normalizedOr(kUpAxis)};
+        const Vec3 direction = combined.normalizedOr(kUpAxis);
+        if (position.z < groundHeight) {
+            return {0.0f, direction};
+        }
+        return {ambient + sunIntensity, direction};
     }
 };
 

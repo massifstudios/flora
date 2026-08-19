@@ -88,6 +88,16 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
         species.shadowVerticalRetention.value(stream.normal(0.0f, 1.0f), age);
     parameters.shadowLateralSpread =
         species.shadowLateralSpread.value(stream.normal(0.0f, 1.0f), age);
+    parameters.thicknessApicalWeight =
+        species.thicknessApicalWeight.value(stream.normal(0.0f, 1.0f), age);
+    parameters.dropShadedGrowthLight =
+        species.dropShadedGrowthLight.value(stream.normal(0.0f, 1.0f), age);
+    parameters.brightGrowthPriority =
+        species.brightGrowthPriority.value(stream.normal(0.0f, 1.0f), age);
+    parameters.branchStiffness = species.branchStiffness.value(stream.normal(0.0f, 1.0f), age);
+    parameters.bendIntegration = species.bendIntegration.value(stream.normal(0.0f, 1.0f), age);
+    parameters.leafBearingTipDistance =
+        species.leafBearingTipDistance.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;

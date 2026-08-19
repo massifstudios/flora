@@ -95,17 +95,27 @@ between fidelity levels regenerates structure deterministically from that key + 
 Fixed phase order per step (changing order is an architecture change):
 
 ```text
-1 sample environment (light per bud, via active backend)
-2 accumulate energy and wood volume rootward
-3 shed weak branches (production vs maintenance cost, before resources are spent)
-4 allocate resource tipward (apical-control weighted, surviving outlets only)
-5 bud fate (dormancy limits, activation thresholds)
-6 shoot growth with orientation (tropisms + gnarl steer each metamer;
-  phyllotactic lateral bud placement)
-7 secondary thickening (incremental pipe model, energy-weighted)
-8 deadwood decay (delayed removal of shed structure)
-9 age, mortality
+1  sample environment (light per bud, via active backend)
+2  accumulate energy and wood volume rootward
+3a drop shaded terminal growth (light threshold, childless stems only)
+3b shed weak branches (production vs maintenance cost, before resources are spent)
+4  allocate resource tipward (apical-control weighted, brightness-biased,
+   surviving outlets only)
+5  bud fate (dormancy limits, activation thresholds)
+6  shoot growth with orientation (tropisms + gnarl steer each metamer;
+   phyllotactic lateral bud placement)
+7a secondary thickening (incremental pipe model, production/allocation weighted)
+7b bending under self weight (cantilever, plastic integration)
+8  deadwood decay (delayed removal of shed structure)
+9  age, mortality
 ```
+
+Phase 3a culls childless stems below `dropShadedGrowthLight`; 3b only reaches
+branches that have already grown expensive, so without 3a a crown silts up with
+unproductive interior twigs. Phase 7a blends its driver between collected
+production and apical-control-weighted allocation (`thicknessApicalWeight`): a
+tree reinforces the stems it *feeds*, so a suppressed lateral carrying a
+productive tip stays slender instead of thickening into a second trunk.
 
 Shedding runs before allocation so no resource is wasted on doomed branches.
 
@@ -136,8 +146,17 @@ that has stopped extending keeps its growing points instead of dissolving; and
 maintenance cost counts only the outer `sapwoodDepth` shell of each stem, so an
 old trunk's heartwood is free and thickening cannot starve the tree it belongs
 to.
-Bending (cantilever + plastic integration) is a high-fidelity sub-phase of 6/7, classified
-APPROXIMATE, skipped below structural fidelity.
+Bending (phase 7b) treats each internode as a cantilever loaded by the wood beyond it:
+deflection is `torque × length / (branchStiffness × radius⁴)` with the load arm taken
+horizontally from the internode's base to the subtree's volume centroid. Only the fraction
+`bendIntegration` of each year's deflection is applied, and it is applied permanently — the
+elastic component is not tracked, so a limb never springs back when it sheds a branch.
+Classified APPROXIMATE; `bendIntegration = 0` skips it below structural fidelity. Sag
+shortens the load arm, so the process converges; a per-step cap keeps a thin overloaded stem
+from folding in one step.
+
+Crown architecture depends on this: without it branches are straight radial spokes, since
+tropisms alone never respond to load.
 
 ### Fidelity classifications
 
@@ -167,8 +186,14 @@ documented at the call site of its introduction.
 
 Finalized (M6) light query: `Environment::sampleLight(position) -> LightSample
 {intensity, direction}` — external light before self-shading. Backends:
-`ConstantEnvironment` (reference/tests), `SkyEnvironment` (analytic ambient + sun).
+`ConstantEnvironment` (reference/tests), `SkyEnvironment` (analytic ambient + sun over an
+opaque ground plane — below `groundHeight` no sky is visible, so a drooping limb that reaches
+the ground starves instead of growing on underground).
 Terrain/soil/water queries join this interface when their milestones arrive.
+
+The raycast backend weights each hemisphere ray by its zenith cosine (uniform-luminance sky).
+Weighting rays equally credits a limb under a crown with a full sky's worth of grazing light
+and keeps the understorey alive, which flattens a tree's crown against the ground.
 
 Self-shading is simulation-internal, not part of `Environment`: each step rebuilds a
 `ShadowVoxelGrid` from the plant's own leafy tips. Two fields are available.
@@ -188,8 +213,13 @@ clusters (M7). At forest scale the grid becomes shared per-cell rather than per-
 (§14).
 
 Foliage (M7): clusters are derived data, recomputed from structure each step by a
-deterministic O(n) placement pass (live internodes with radius ≤ `leafMaxBearingRadius`,
-at least `leafClusterSpacing` apart along the axis path, droop-tilted orientation).
+deterministic O(n) placement pass (live internodes within `leafBearingTipDistance` of the
+nearest live tip, at least `leafClusterSpacing` apart along the axis path, droop-tilted
+orientation; `leafMaxBearingRadius` remains only as a girth cap against stubs).
+Proximity to a tip is the primary rule because leaves belong to young shoots: keying bearing
+to stem radius instead ties leaf area to the thickening calibration, and since a radius
+threshold must sit just above `baseGrowthThickness`, any change to thickening drags the whole
+leaf-bearing zone with it — and below that threshold a seedling bears nothing and dies.
 Clusters are both the photosynthetic producers — energy = shaded light × cluster area ×
 `leafProductivity` — and the shadow casters, so thick leafless interior wood starves and
 sheds without any special-case rule. Leaf geometry is instanced cards in flora-geometry,

@@ -168,3 +168,56 @@ TEST_CASE("leaf-shade coupling: denser foliage casts more shade and slows growth
 
     CHECK(densePlant.graph.internodeCount() < sparsePlant.graph.internodeCount());
 }
+
+TEST_CASE("foliage sits near tips, not on old wood behind them") {
+    GrowthParameters parameters;
+    parameters.leafBearingTipDistance = 1.0f;
+    parameters.leafClusterSpacing = 0.0f; // isolate the tip-distance rule
+    parameters.leafMaxBearingRadius = 1.0f;
+
+    const StemGraph graph = thinAxis(10, 0.5f, 0.01f); // 5 m axis, tip at index 9
+    const std::vector<FoliageCluster> clusters = placedOn(graph, parameters);
+
+    REQUIRE(!clusters.empty());
+    for (const FoliageCluster& cluster : clusters) {
+        CHECK(cluster.internode >= 7); // within 1 m of the tip
+    }
+}
+
+TEST_CASE("tip distance is measured to the nearest tip, not through one branch") {
+    GrowthParameters parameters;
+    parameters.leafBearingTipDistance = 0.6f;
+    parameters.leafClusterSpacing = 0.0f;
+    parameters.leafMaxBearingRadius = 1.0f;
+
+    // A fork whose two arms differ in length: the short arm brings a tip close
+    // to the junction, so the junction bears leaves.
+    StemGraph graph;
+    const Index junction = graph.addRoot(kUpAxis, 0.5f, 0.01f, 0);
+    graph.addInternode(junction, AxisRelation::Continuation, kUpAxis, 0.5f, 0.01f, 0);
+    Index longArm = graph.addInternode(junction, AxisRelation::Lateral, Vec3{1, 0, 0}, 0.5f, 0.01f, 0);
+    for (int i = 0; i < 4; ++i) {
+        longArm = graph.addInternode(longArm, AxisRelation::Continuation, Vec3{1, 0, 0}, 0.5f,
+                                     0.01f, 0);
+    }
+
+    const std::vector<FoliageCluster> clusters = placedOn(graph, parameters);
+    bool junctionBears = false;
+    for (const FoliageCluster& cluster : clusters) {
+        junctionBears = junctionBears || cluster.internode == junction;
+    }
+    CHECK(junctionBears);
+}
+
+TEST_CASE("thickening does not move the leaf-bearing zone") {
+    // The point of keying foliage to tip distance: stems thicken over a tree's
+    // life, and that must not decide where leaves live.
+    GrowthParameters parameters;
+    parameters.leafBearingTipDistance = 1.0f;
+    parameters.leafClusterSpacing = 0.0f;
+    parameters.leafMaxBearingRadius = 1.0f;
+
+    const StemGraph thin = thinAxis(10, 0.5f, 0.005f);
+    const StemGraph thick = thinAxis(10, 0.5f, 0.4f);
+    CHECK(placedOn(thin, parameters).size() == placedOn(thick, parameters).size());
+}

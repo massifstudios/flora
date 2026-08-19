@@ -32,6 +32,10 @@ struct GrowthParameters {
     float apicalControl = 0.65f;       // λ: continuation/apical outlet bias, 0..1
     float vigorScale = 1.0f;           // resource per unit collected energy
     float activationThreshold = 0.45f; // minimum bud resource to grow
+    // Exponent on bud light when buds compete for resource: 1 is proportional,
+    // higher values push growth into the lit part of the crown and starve the
+    // shaded part. Shade-intolerant species sit high, shade-tolerant low.
+    float brightGrowthPriority = 1.0f;
 
     // Branching / phyllotaxis
     float branchAngle = 0.7853982f;       // 45 deg
@@ -69,7 +73,13 @@ struct GrowthParameters {
 
     // Foliage placement (derived per step; structure/foliage.hpp). Clusters
     // are the photosynthetic producers and the shadow casters.
-    float leafMaxBearingRadius = 0.02f; // twigs at or below this radius bear leaves
+    // Leaves sit on young shoots. Keying that to stem path from the nearest tip
+    // rather than to girth keeps leaf area independent of the thickening
+    // calibration: a radius threshold has to sit just above
+    // baseGrowthThickness, so any change to thickening moves the whole
+    // leaf-bearing zone with it.
+    float leafBearingTipDistance = 1000.0f; // meters of stem path to the nearest tip
+    float leafMaxBearingRadius = 0.02f;     // upper girth cap for a bearing stem
     float leafClusterSpacing = 0.3f;    // min axis-path distance between clusters, meters
     float leafClusterScale = 0.35f;     // cluster radius, meters
     float leafDroop = 0.25f;            // downward blend of cluster orientation
@@ -89,6 +99,12 @@ struct GrowthParameters {
     // Secondary thickening: cross-section area gain per unit collected energy
     // per step (incremental pipe model)
     float thicknessGrowthFactor = 1.5e-6f;
+    // Blends the thickening driver from collected production (0) to
+    // apical-control-weighted allocation (1). A tree reinforces the stems it
+    // feeds, not merely the ones that photosynthesize, so a suppressed lateral
+    // carrying a productive tip stays slender instead of growing into a second
+    // trunk.
+    float thicknessApicalWeight = 0.0f;
 
     // Shedding: a lateral branch is shed when its collected energy divided by
     // (maintenanceCostPerVolume × subtree sapwood volume) falls below the
@@ -98,6 +114,11 @@ struct GrowthParameters {
     float maintenanceCostPerVolume = 400.0f; // energy units per m^3 per step
     float sapwoodDepth = 0.05f;              // meters inward from the surface
     float dropWeakBranchRatio = 1.0f;        // 0 disables shedding
+    // Minimum light for a terminal stem (no live children) to survive. Cost
+    // shedding only reaches whole branches that have already grown expensive;
+    // this culls the shaded new shoots that would fill a crown's interior
+    // before they ever pay for themselves. 0 disables it.
+    float dropShadedGrowthLight = 0.0f;
     // At most this fraction of the tree sheds per step, worst branches first.
     // Spreads correction over time instead of mass die-offs when maintenance
     // cost catches up with capped energy (stabilizer until M6 light limits
@@ -116,6 +137,14 @@ struct GrowthParameters {
     // branch and the leader keeps its head start. Losing the apex releases the
     // buds below it. 0 disables suppression (resource competition only).
     float apicalDominanceRange = 0.0f; // meters of axis path below the apex
+
+    // Bending under self weight (APPROXIMATE; ARCHITECTURE.md §6). Each
+    // internode is a cantilever loaded by the wood it carries: the deflection
+    // is not tracked elastically, only the fraction that the stem grows into
+    // permanently, so a limb sags as it matures and never springs back when it
+    // sheds a branch. Sag shortens the load arm, so bending converges.
+    float branchStiffness = 1.0e6f; // meters of arm per radian; higher is stiffer
+    float bendIntegration = 0.0f;   // fraction of the year's deflection kept, 0 disables
 
     // Bud lifecycle
     std::uint32_t budDormancyLimit = 3; // dormant steps before a bud dies

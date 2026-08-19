@@ -15,7 +15,7 @@ namespace flora {
 // deterministically materializes the GrowthParameters for that individual at
 // a given age.
 
-inline constexpr std::uint32_t kSpeciesSchemaVersion = 4;
+inline constexpr std::uint32_t kSpeciesSchemaVersion = 5;
 
 // Normal distribution with clamping. stddev 0 collapses to the mean.
 struct Distribution {
@@ -95,6 +95,17 @@ struct SpeciesDefinition {
     SpeciesParameter lateralPhototropism{{0.02f, 0.0f, 0.0f, 1.0f}, {}};
     SpeciesParameter apicalDominanceRange{{0.0f, 0.0f, 0.0f, 20.0f}, {}};
     SpeciesParameter branchVigorFalloff{{1.0f, 0.0f, 0.1f, 1.0f}, {}};
+    // Schema v5: crown economy — what the tree reinforces, what it drops, and
+    // where it spends. Defaults keep the v4 behavior (production-driven
+    // thickening, no shade culling, proportional allocation).
+    SpeciesParameter thicknessApicalWeight{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter dropShadedGrowthLight{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter brightGrowthPriority{{1.0f, 0.0f, 0.1f, 8.0f}, {}};
+    // Schema v5: bending under self weight. bendIntegration 0 disables it.
+    SpeciesParameter branchStiffness{{1.0e6f, 0.0f, 1.0f, 1.0e12f}, {}};
+    SpeciesParameter bendIntegration{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    // Schema v5: leaves belong to young shoots, not to thin stems.
+    SpeciesParameter leafBearingTipDistance{{1000.0f, 0.0f, 0.01f, 1000.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;

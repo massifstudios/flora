@@ -80,6 +80,11 @@ float hydraulicExtension(const GrowthParameters& parameters, float pathLength) {
 // dormant instead of producing degenerate near-zero-length internodes.
 constexpr float kMinExtensionFactor = 0.02f;
 
+// Cap on one step's bending so a thin, heavily loaded stem cannot fold in a
+// single step: real wood reaches this over years, and the load arm shrinks as
+// it does.
+constexpr float kMaxBendPerStep = 0.25f; // radians
+
 // Appends a shoot of metamerCount internodes from the given bud, steering
 // each metamer by tropisms and gnarl and placing lateral buds by phyllotaxis,
 // then moves the bud to the new tip. Metamers shorten as the shoot extends the
@@ -318,16 +323,23 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         if (parameters.shadeModel == ShadeModel::Raycast) {
             const std::uint32_t rayCount = std::max(1u, parameters.raycastRayCount);
             float transmitted = 0.0f;
+            float weightTotal = 0.0f;
             Vec3 weightedDirection{0.0f, 0.0f, 0.0f};
             for (std::uint32_t ray = 0; ray < rayCount; ++ray) {
                 const Vec3 rayDirection = hemisphereRay(ray, rayCount);
+                // Cosine-weighted: a patch of sky near the horizon delivers far
+                // less irradiance to an upward-facing shoot than the zenith
+                // does. Weighting rays equally hands a limb under the crown a
+                // full sky's worth of grazing light and keeps it alive.
+                const float weight = rayDirection.dot(kUpAxis);
                 const float transmittance =
                     context.shadowGrid_.transmittanceAlong(position, rayDirection, 1.0f);
-                transmitted += transmittance;
-                weightedDirection += rayDirection * transmittance;
+                transmitted += transmittance * weight;
+                weightTotal += weight;
+                weightedDirection += rayDirection * (transmittance * weight);
             }
-            return {base.intensity * (transmitted / static_cast<float>(rayCount)),
-                    weightedDirection.normalizedOr(base.direction)};
+            const float shaded = weightTotal > 0.0f ? transmitted / weightTotal : 0.0f;
+            return {base.intensity * shaded, weightedDirection.normalizedOr(base.direction)};
         }
         return base;
     };
@@ -381,7 +393,40 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
     }
 
-    // Phase 3 — shed weak laterals before any resource is spent on them:
+    // Phase 3a — drop shaded new growth. A terminal stem is a shoot the tree
+    // has not yet committed to: if it sits in the dark it is cut before the
+    // cost rule below would ever see it, which is what keeps a crown's
+    // interior from silting up with unproductive twigs.
+    if (parameters.dropShadedGrowthLight > 0.0f) {
+        bool anyDropped = false;
+        for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+            const Internode& node = graph.internode(i);
+            if (!node.alive || node.parent == kInvalidIndex) {
+                continue;
+            }
+            bool hasLiveChild = false;
+            for (Index child = node.firstChild; child != kInvalidIndex;
+                 child = graph.internode(child).nextSibling) {
+                hasLiveChild = hasLiveChild || graph.internode(child).alive;
+            }
+            if (hasLiveChild) {
+                continue;
+            }
+            float light = -1.0f; // no bud: nothing measured this stem's exposure
+            for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
+                light = std::max(light, budLight[budIndices[slot]]);
+            }
+            if (light >= 0.0f && light < parameters.dropShadedGrowthLight) {
+                graph.markSubtreeDead(i, step);
+                anyDropped = true;
+            }
+        }
+        if (anyDropped) {
+            graph.sweepDeadBuds();
+        }
+    }
+
+    // Phase 3b — shed weak laterals before any resource is spent on them:
     // production (collected energy) must cover the maintenance cost of the
     // wood it supports. Shedding is rate-limited and worst-first so cost
     // pressure produces gradual senescence, not mass die-offs.
@@ -424,8 +469,16 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
     // child internodes and live attached buds) by bias-weighted energy.
     auto& resource = context.resource_;
     auto& budResource = context.budResource_;
+    auto& budWeight = context.budWeight_;
     resource.assign(internodeCount, 0.0f);
     budResource.assign(budCount, 0.0f);
+    budWeight.assign(budCount, 0.0f);
+    const bool weightByBrightness = parameters.brightGrowthPriority != 1.0f;
+    for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
+        const float light = budLight[budIndex];
+        budWeight[budIndex] =
+            weightByBrightness ? std::pow(light, parameters.brightGrowthPriority) : light;
+    }
     for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
         const Internode& node = graph.internode(i);
         if (node.alive && node.parent == kInvalidIndex) {
@@ -463,7 +516,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             if (bud.state == BudState::Dead || suppressed[budIndex] != 0) {
                 continue;
             }
-            (bud.type == BudType::Apical ? mainFlux : lateralFlux) += budLight[budIndex];
+            (bud.type == BudType::Apical ? mainFlux : lateralFlux) += budWeight[budIndex];
         }
 
         const float lambda = parameters.apicalControl;
@@ -495,7 +548,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 continue;
             }
             const bool apical = bud.type == BudType::Apical;
-            budResource[budIndex] = (apical ? mainScale : lateralScale) * budLight[budIndex];
+            budResource[budIndex] = (apical ? mainScale : lateralScale) * budWeight[budIndex];
         }
     }
 
@@ -560,13 +613,79 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
     // area grows with the energy collected through this internode (pre-growth
     // snapshot); new metamers from this step keep their initial radius.
     if (parameters.thicknessGrowthFactor > 0.0f) {
+        const float apicalWeight = std::clamp(parameters.thicknessApicalWeight, 0.0f, 1.0f);
         for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
             Internode& node = graph.internode(i);
-            if (node.alive && energy[i] > 0.0f) {
-                const float area =
-                    kPi * node.radius * node.radius + parameters.thicknessGrowthFactor * energy[i];
-                node.radius = std::sqrt(area / kPi);
+            if (!node.alive) {
+                continue;
             }
+            const float driver = energy[i] + apicalWeight * (resource[i] - energy[i]);
+            if (driver <= 0.0f) {
+                continue;
+            }
+            const float area =
+                kPi * node.radius * node.radius + parameters.thicknessGrowthFactor * driver;
+            node.radius = std::sqrt(area / kPi);
+        }
+    }
+
+    // Phase 7b — bending under self weight. Each internode is a cantilever
+    // carrying the wood beyond it; the deflection that the stem grows into
+    // permanently is what turns straight radial branches into the sagging
+    // limbs of a mature crown. Two rootward passes, no per-step allocation.
+    if (parameters.bendIntegration > 0.0f && parameters.branchStiffness > 0.0f) {
+        graph.computeTipPositions(context.tipPositions_);
+        const auto& positions = context.tipPositions_;
+        const std::size_t bearingCount = graph.internodeCount();
+
+        auto& loadVolume = context.loadVolume_;
+        auto& loadMoment = context.loadMoment_;
+        loadVolume.assign(bearingCount, 0.0f);
+        loadMoment.assign(bearingCount, Vec3{});
+        for (Index i = 0; i < static_cast<Index>(bearingCount); ++i) {
+            const Internode& node = graph.internode(i);
+            if (!node.alive) {
+                continue;
+            }
+            const Vec3 base = node.parent == kInvalidIndex ? Vec3{} : positions[node.parent];
+            const float volume = kPi * node.radius * node.radius * node.length;
+            loadVolume[i] = volume;
+            loadMoment[i] = (base + positions[i]) * (0.5f * volume);
+        }
+        for (std::size_t i = bearingCount; i-- > 0;) {
+            const Internode& node = graph.internode(static_cast<Index>(i));
+            if (node.alive && node.parent != kInvalidIndex) {
+                loadVolume[node.parent] += loadVolume[i];
+                loadMoment[node.parent] += loadMoment[i];
+            }
+        }
+
+        const float integration = std::clamp(parameters.bendIntegration, 0.0f, 1.0f);
+        for (Index i = 0; i < static_cast<Index>(bearingCount); ++i) {
+            Internode& node = graph.internode(i);
+            if (!node.alive || node.radius <= 0.0f || loadVolume[i] <= 0.0f) {
+                continue;
+            }
+            const Vec3 base = node.parent == kInvalidIndex ? Vec3{} : positions[node.parent];
+            const Vec3 arm = loadMoment[i] * (1.0f / loadVolume[i]) - base;
+            const Vec3 lever = arm - kUpAxis * arm.dot(kUpAxis); // gravity acts on the horizontal reach
+            const float radiusSquared = node.radius * node.radius;
+            const float torque = loadVolume[i] * lever.length();
+            const float deflection =
+                torque * node.length / (parameters.branchStiffness * radiusSquared * radiusSquared);
+            const float angle = std::min(deflection, kMaxBendPerStep) * integration;
+            if (angle <= 0.0f) {
+                continue;
+            }
+            const Vec3 down = -kUpAxis;
+            const Vec3 sag = down - node.direction * down.dot(node.direction);
+            const Vec3 sagDirection = sag.normalizedOr(Vec3{});
+            if (sagDirection.lengthSquared() <= 0.0f) {
+                continue; // stem already hangs straight down: nowhere to bend
+            }
+            node.direction =
+                (node.direction * std::cos(angle) + sagDirection * std::sin(angle))
+                    .normalizedOr(node.direction);
         }
     }
 
