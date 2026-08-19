@@ -132,11 +132,25 @@ L3 hero plant               (raycast light, bending, full geometry)
 
 ## 7. Environment
 
-Core defines an abstract environment interface (light query, terrain height, occlusion,
-soil/water scalars). Backends are core-owned implementations (analytic sky, voxel shade
-field, neighbor index); engine adapters may feed *data* in (heightfields, obstacle sets)
-but never own queries. Expensive queries go through `spatial/` acceleration; complexity of
-any query must be documented at the call site of its introduction.
+Core defines an abstract environment interface; backends are core-owned implementations.
+Engine adapters may feed *data* in (heightfields, obstacle sets) but never own queries.
+Expensive queries go through `spatial/` acceleration; complexity of any query must be
+documented at the call site of its introduction.
+
+Finalized (M6) light query: `Environment::sampleLight(position) -> LightSample
+{intensity, direction}` — external light before self-shading. Backends:
+`ConstantEnvironment` (reference/tests), `SkyEnvironment` (analytic ambient + sun).
+Terrain/soil/water queries join this interface when their milestones arrive.
+
+Self-shading is simulation-internal, not part of `Environment`: each step rebuilds a
+`ShadowVoxelGrid` from the plant's own leafy tips (Palubicki 2009 shadow propagation;
+build O(casters × depth³), query O(1)). Per-bud light = external sample minus
+accumulated shadow (own contribution excluded); shaded buds steer toward the field's
+negative gradient. Fidelity is a simulation setting (`ShadeModel`): `Off` (reference
+path), `VoxelPropagation` (L2 default), `Raycast` (L3 hero: occupancy grid + fixed
+Fibonacci-hemisphere rays, transmittance-weighted light direction). Casters are
+bud-bearing tips until M7 switches them to foliage clusters. At forest scale the grid
+becomes shared per-cell rather than per-plant (§14).
 
 ## 8. Determinism
 

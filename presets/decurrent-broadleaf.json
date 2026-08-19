@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 1,
+  "version": 2,
   "name": "Decurrent Broadleaf",
   "parameters": {
     "baseGrowthLength": {"mean": 0.4, "stddev": 0.04, "min": 0.15, "max": 0.8},
@@ -23,6 +23,8 @@
     "thicknessGrowthFactor": 1.5e-6,
     "maintenanceCostPerVolume": 400.0,
     "dropWeakBranchRatio": 1.0,
+    "shadowIntensity": 0.2,
+    "shadowFalloff": 2.0,
     "maxMetamersPerShoot": 3,
     "lateralBudsPerMetamer": 1,
     "budDormancyLimit": 3,

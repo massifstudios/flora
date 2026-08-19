@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 1,
+  "version": 2,
   "name": "Excurrent Conifer",
   "parameters": {
     "baseGrowthLength": {"mean": 0.3, "stddev": 0.03, "min": 0.1, "max": 0.6},
@@ -23,6 +23,8 @@
     "thicknessGrowthFactor": 1.2e-6,
     "maintenanceCostPerVolume": 350.0,
     "dropWeakBranchRatio": 0.9,
+    "shadowIntensity": 0.14,
+    "shadowFalloff": 2.2,
     "maxMetamersPerShoot": 3,
     "lateralBudsPerMetamer": 2,
     "budDormancyLimit": 2,

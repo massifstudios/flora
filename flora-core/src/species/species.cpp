@@ -64,6 +64,8 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
         species.dropWeakBranchRatio.value(stream.normal(0.0f, 1.0f), age);
     parameters.maxShedFractionPerStep =
         species.maxShedFractionPerStep.value(stream.normal(0.0f, 1.0f), age);
+    parameters.shadowIntensity = species.shadowIntensity.value(stream.normal(0.0f, 1.0f), age);
+    parameters.shadowFalloff = species.shadowFalloff.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;
@@ -73,11 +75,12 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     return parameters;
 }
 
-void grow(Plant& plant, const SpeciesDefinition& species, const ConstantEnvironment& environment,
-          std::uint32_t steps, GrowthContext& context) {
+void grow(Plant& plant, const SpeciesDefinition& species, const Environment& environment,
+          std::uint32_t steps, GrowthContext& context, ShadeModel shadeModel) {
     for (std::uint32_t i = 0; i < steps; ++i) {
-        const GrowthParameters parameters =
+        GrowthParameters parameters =
             materializeGrowthParameters(species, plant.seed, plant.ageSteps);
+        parameters.shadeModel = shadeModel;
         growStep(plant, parameters, environment, context);
     }
 }

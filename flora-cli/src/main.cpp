@@ -80,17 +80,18 @@ int printUsage() {
     std::printf("    --species <file>     species definition JSON (see presets/)\n");
     std::printf("    --obj <path>         write solid branch mesh OBJ (Blender/MeshLab)\n");
     std::printf("    --skeleton <path>    write skeleton line OBJ (debug view)\n");
+    std::printf("    --shade <mode>       self-shading: voxel (default), raycast, off\n");
     return 1;
 }
 
 int runGrow(std::uint64_t seed, std::uint32_t steps, const SpeciesDefinition& species,
-            const char* objPath, const char* skeletonPath) {
+            const char* objPath, const char* skeletonPath, ShadeModel shadeModel) {
     Plant plant;
     plant.seed = seed;
     plantSeedling(plant, materializeGrowthParameters(species, seed, 0));
 
     GrowthContext context;
-    grow(plant, species, ConstantEnvironment{}, steps, context);
+    grow(plant, species, SkyEnvironment{}, steps, context, shadeModel);
 
     std::string errors;
     const bool valid = plant.graph.validate(&errors);
@@ -168,6 +169,7 @@ int main(int argc, char** argv) {
         SpeciesDefinition species;
         const char* objPath = nullptr;
         const char* skeletonPath = nullptr;
+        ShadeModel shadeModel = ShadeModel::VoxelPropagation;
         for (int i = 4; i < argc; ++i) {
             if (std::strcmp(argv[i], "--species") == 0 && i + 1 < argc) {
                 const char* path = argv[++i];
@@ -187,11 +189,22 @@ int main(int argc, char** argv) {
                 objPath = argv[++i];
             } else if (std::strcmp(argv[i], "--skeleton") == 0 && i + 1 < argc) {
                 skeletonPath = argv[++i];
+            } else if (std::strcmp(argv[i], "--shade") == 0 && i + 1 < argc) {
+                const char* mode = argv[++i];
+                if (std::strcmp(mode, "voxel") == 0) {
+                    shadeModel = ShadeModel::VoxelPropagation;
+                } else if (std::strcmp(mode, "raycast") == 0) {
+                    shadeModel = ShadeModel::Raycast;
+                } else if (std::strcmp(mode, "off") == 0) {
+                    shadeModel = ShadeModel::Off;
+                } else {
+                    return printUsage();
+                }
             } else {
                 return printUsage();
             }
         }
-        return runGrow(seed, steps, species, objPath, skeletonPath);
+        return runGrow(seed, steps, species, objPath, skeletonPath, shadeModel);
     }
     return printUsage();
 }

@@ -198,10 +198,13 @@ TEST_CASE("successive lateral buds follow the phyllotactic spiral") {
     }
 }
 
-TEST_CASE("regression: pinned structure for default parameters") {
-    // Golden snapshot for (seed 42, 14 steps, defaults). A change here is a
-    // deterministic-output change and requires a kSimulationRevision bump.
-    const Plant plant = grownPlant(42, 14, GrowthParameters{});
+TEST_CASE("regression: pinned structure for the reference path (shading off)") {
+    // Golden snapshot for (seed 42, 14 steps, defaults, ShadeModel::Off). A
+    // change here is a deterministic-output change and requires a
+    // kSimulationRevision bump.
+    GrowthParameters parameters;
+    parameters.shadeModel = ShadeModel::Off;
+    const Plant plant = grownPlant(42, 14, parameters);
     CHECK(plant.graph.internodeCount() == 12164);
     CHECK(plant.graph.budCount() == 12164);
 
@@ -212,4 +215,11 @@ TEST_CASE("regression: pinned structure for default parameters") {
         height = std::max(height, tip.z);
     }
     CHECK(height == doctest::Approx(12.924929f).epsilon(0.001));
+}
+
+TEST_CASE("regression: pinned structure for default parameters (voxel shading)") {
+    // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
+    const Plant plant = grownPlant(42, 14, GrowthParameters{});
+    CHECK(plant.graph.internodeCount() == 135);
+    CHECK(plant.graph.budCount() == 80);
 }

@@ -1,4 +1,5 @@
 add_library(flora-core
+    src/environment/shadow_grid.cpp
     src/growth/simulation.cpp
     src/species/species.cpp
     src/species/species_io.cpp

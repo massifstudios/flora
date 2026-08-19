@@ -106,6 +106,7 @@ TEST_CASE("gnarl perturbs continuation directions") {
 TEST_CASE("secondary thickening grows the trunk and preserves taper") {
     GrowthParameters parameters;
     parameters.dropWeakBranchRatio = 0.0f;
+    parameters.shadeModel = ShadeModel::Off; // isolate thickening from light competition
     const Plant plant = grownPlant(31, 15, parameters);
 
     const float rootRadius = plant.graph.internode(0).radius;

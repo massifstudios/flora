@@ -6,6 +6,16 @@
 
 namespace flora {
 
+// Self-shading fidelity backend (ARCHITECTURE.md §6): Off is the reference
+// path (external environment light only), VoxelPropagation the L2 structural
+// default, Raycast the L3 hero backend. A simulation setting, not species
+// biology: it never comes from species files.
+enum class ShadeModel : std::uint8_t {
+    Off,
+    VoxelPropagation,
+    Raycast,
+};
+
 // Growth control surface materialized per plant and step from a species
 // definition (flora/species/species.hpp). Angles in radians, lengths in
 // meters.
@@ -28,8 +38,17 @@ struct GrowthParameters {
 
     // Orientation: per-metamer direction blending weights
     float gravitropism = 0.08f;  // pull toward +Z (negative droops)
-    float phototropism = 0.05f;  // pull toward the environment light direction
+    float phototropism = 0.05f;  // pull toward the per-bud light direction
     float gnarl = 0.06f;         // random per-metamer offset magnitude
+
+    // Self-shading (phase 1). shadowIntensity/shadowFalloff are species
+    // biology (foliage density); the rest are fidelity settings.
+    ShadeModel shadeModel = ShadeModel::VoxelPropagation;
+    float shadowIntensity = 0.2f;      // shadow one leafy tip casts on its own voxel
+    float shadowFalloff = 2.0f;        // per-layer divisor, > 1
+    float shadowVoxelSize = 0.5f;      // meters
+    std::uint32_t shadowDepth = 5;     // pyramid layers
+    std::uint32_t raycastRayCount = 32; // hemisphere rays, Raycast backend only
 
     // Secondary thickening: cross-section area gain per unit collected energy
     // per step (incremental pipe model)
@@ -53,14 +72,6 @@ struct GrowthParameters {
 
     // Hard caps (part of the determinism key; see ARCHITECTURE.md §14)
     std::uint32_t maxInternodes = 100000;
-};
-
-// Placeholder environment until the M6 backend interface: every live bud
-// receives the same light level each step, and phototropism steers toward a
-// single global light direction.
-struct ConstantEnvironment {
-    float light = 1.0f;
-    Vec3 lightDirection{0.0f, 0.0f, 1.0f}; // unit vector toward the light
 };
 
 } // namespace flora

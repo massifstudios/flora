@@ -83,8 +83,10 @@ int main() {
     });
 
     {
-        // Single tree grown to the internode cap (~35 steps with defaults).
+        // Single tree grown to the internode cap (~35 steps, shading off:
+        // the reference path keeps this comparable across revisions).
         GrowthParameters parameters;
+        parameters.shadeModel = ShadeModel::Off;
         std::uint64_t grownInternodes = 0;
         GrowthContext context;
         registry.run("growth/single_tree_to_100k_internodes", 100000, "internode", [&] {
@@ -95,6 +97,23 @@ int main() {
             grownInternodes = plant.graph.internodeCount();
         });
         std::printf("  (single tree reached %llu internodes in 40 steps)\n",
+                    static_cast<unsigned long long>(grownInternodes));
+    }
+
+    {
+        // Same tree under voxel self-shading: light competition caps the
+        // structure well below the internode limit.
+        GrowthParameters parameters;
+        std::uint64_t grownInternodes = 0;
+        GrowthContext context;
+        registry.run("growth/single_tree_voxel_shade_40_steps", 40, "step", [&] {
+            Plant plant;
+            plant.seed = 42;
+            plantSeedling(plant, parameters);
+            grow(plant, parameters, ConstantEnvironment{}, 40, context);
+            grownInternodes = plant.graph.internodeCount();
+        });
+        std::printf("  (voxel-shaded tree reached %llu internodes in 40 steps)\n",
                     static_cast<unsigned long long>(grownInternodes));
     }
 
@@ -119,8 +138,57 @@ int main() {
     }
 
     {
+        // Light backends on a synthetic 20k-caster crown (~20 m across).
+        constexpr std::uint64_t kCasters = 20000;
+        std::vector<Vec3> casters;
+        casters.reserve(kCasters);
+        auto stream = RandomStream::derive(9, RngPurpose::Test, 1);
+        for (std::uint64_t i = 0; i < kCasters; ++i) {
+            casters.push_back(Vec3{stream.uniformFloat(-10.0f, 10.0f),
+                                   stream.uniformFloat(-10.0f, 10.0f),
+                                   stream.uniformFloat(5.0f, 25.0f)});
+        }
+        ShadowVoxelGrid grid;
+        ShadowVoxelGrid::Settings settings;
+        registry.run("light/voxel_grid_build_20k_casters", kCasters, "caster",
+                     [&] { grid.build(casters, settings); });
+
+        float sink = 0.0f;
+        registry.run("light/voxel_shadow_query_20k", kCasters, "query", [&] {
+            sink = 0.0f;
+            for (const Vec3& position : casters) {
+                sink += grid.shadowAt(position);
+            }
+        });
+
+        ShadowVoxelGrid::Settings occupancy;
+        occupancy.shadowDepth = 0;
+        ShadowVoxelGrid rayGrid;
+        rayGrid.build(casters, occupancy);
+        constexpr std::uint64_t kRayQueries = 1000;
+        constexpr std::uint32_t kRaysPerQuery = 32;
+        registry.run("light/raycast_query_1k_x32rays", kRayQueries * kRaysPerQuery, "ray", [&] {
+            sink = 0.0f;
+            for (std::uint64_t i = 0; i < kRayQueries; ++i) {
+                const Vec3& position = casters[i * (kCasters / kRayQueries)];
+                for (std::uint32_t ray = 0; ray < kRaysPerQuery; ++ray) {
+                    const float upBias =
+                        (static_cast<float>(ray) + 0.5f) / static_cast<float>(kRaysPerQuery);
+                    const Vec3 direction =
+                        Vec3{1.0f - upBias, 0.3f, upBias}.normalizedOr(kUpAxis);
+                    sink += rayGrid.transmittanceAlong(position, direction, 1.0f);
+                }
+            }
+        });
+        if (sink < 0.0f) {
+            std::printf("unlikely\n");
+        }
+    }
+
+    {
         // Geometry from a full-size grown tree, both radius modes.
         GrowthParameters growthParameters;
+        growthParameters.shadeModel = ShadeModel::Off; // full 100k-internode mesh workload
         Plant plant;
         plant.seed = 42;
         plantSeedling(plant, growthParameters);

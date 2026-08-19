@@ -38,7 +38,7 @@ Phases 6–8: gravitropism/phototropism/gnarl, incremental pipe-model thickening
 cost/production shedding + deadwood decay. Botanical behavior tests (direction bias,
 suppression, thickness monotonicity, prune correctness).
 
-## M6 — Light and space competition
+## M6 — Light and space competition  ✅
 
 Voxel shadow-propagation backend + analytic sky; environment query interface finalized;
 self-shading changes morphology tests; hero raycast backend (L3) behind same interface.

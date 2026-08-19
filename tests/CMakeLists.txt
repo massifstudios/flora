@@ -3,6 +3,7 @@ add_executable(flora-tests
     test_species.cpp
     test_branch_mesh.cpp
     test_growth.cpp
+    test_light.cpp
     test_rng.cpp
     test_stem_graph.cpp
     test_tropism_shedding.cpp)

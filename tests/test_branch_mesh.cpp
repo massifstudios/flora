@@ -24,6 +24,7 @@ Plant grownPlant(std::uint64_t seed, std::uint32_t steps) {
     Plant plant;
     plant.seed = seed;
     GrowthParameters parameters;
+    parameters.shadeModel = ShadeModel::Off; // geometry tests want a big dense tree
     plantSeedling(plant, parameters);
     GrowthContext context;
     grow(plant, parameters, ConstantEnvironment{}, steps, context);

@@ -21,6 +21,7 @@ namespace {
 
 constexpr float kPi = 3.1415927f;
 constexpr float kTwoPi = 6.2831853f;
+constexpr float kGoldenAngle = 2.3999632f;
 
 // Outlet bias: apical/continuation outlets receive λ, lateral outlets 1-λ.
 float outletBias(const GrowthParameters& parameters, bool continuesAxis) {
@@ -34,13 +35,33 @@ Vec3 randomUnitVector(RandomStream& stream) {
     return {radial * std::cos(azimuth), radial * std::sin(azimuth), z};
 }
 
+ShadowVoxelGrid::Settings shadowSettings(const GrowthParameters& parameters, bool pyramids) {
+    ShadowVoxelGrid::Settings settings;
+    settings.voxelSize = parameters.shadowVoxelSize;
+    settings.shadowIntensity = parameters.shadowIntensity;
+    settings.shadowFalloff = parameters.shadowFalloff;
+    // Raycast integrates occlusion along rays itself: casters occupy only
+    // their own voxel, no downward propagation.
+    settings.shadowDepth = pyramids ? parameters.shadowDepth : 0;
+    return settings;
+}
+
+// Deterministic Fibonacci-spiral hemisphere directions (upper hemisphere,
+// index-driven; no RNG so ray sets never perturb other streams).
+Vec3 hemisphereRay(std::uint32_t rayIndex, std::uint32_t rayCount) {
+    const float zenith =
+        (static_cast<float>(rayIndex) + 0.5f) / static_cast<float>(rayCount);
+    const float azimuth = kGoldenAngle * static_cast<float>(rayIndex);
+    const float radial = std::sqrt(std::max(0.0f, 1.0f - zenith * zenith));
+    return {radial * std::cos(azimuth), radial * std::sin(azimuth), zenith};
+}
+
 // Appends a shoot of metamerCount internodes from the given bud, steering
 // each metamer by tropisms and gnarl and placing lateral buds by phyllotaxis,
 // then moves the bud to the new tip. Works on indices only: addInternode and
 // addBud may reallocate the underlying arrays.
-void growShoot(Plant& plant, const GrowthParameters& parameters,
-               const ConstantEnvironment& environment, Index budIndex,
-               std::uint32_t metamerCount, std::uint32_t step) {
+void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lightDirection,
+               Index budIndex, std::uint32_t metamerCount, std::uint32_t step) {
     StemGraph& graph = plant.graph;
 
     const Bud budBefore = graph.bud(budIndex);
@@ -56,7 +77,7 @@ void growShoot(Plant& plant, const GrowthParameters& parameters,
         // gnarl offset, renormalized. Draw order per metamer: gnarl first,
         // then one branch-angle jitter per whorl bud.
         const Vec3 steered = direction + kUpAxis * parameters.gravitropism +
-                             environment.lightDirection * parameters.phototropism +
+                             lightDirection * parameters.phototropism +
                              randomUnitVector(stream) * parameters.gnarl;
         direction = steered.normalizedOr(direction);
 
@@ -93,8 +114,8 @@ void growShoot(Plant& plant, const GrowthParameters& parameters,
 
 } // namespace
 
-void growStep(Plant& plant, const GrowthParameters& parameters,
-              const ConstantEnvironment& environment, GrowthContext& context) {
+void growStep(Plant& plant, const GrowthParameters& parameters, const Environment& environment,
+              GrowthContext& context) {
     StemGraph& graph = plant.graph;
     const std::size_t internodeCount = graph.internodeCount();
     const std::size_t budCount = graph.budCount();
@@ -107,9 +128,9 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         return;
     }
 
-    // Phase 1 — sample environment. Constant backend: every live bud collects
-    // the same light. CSR grouping of buds by internode is rebuilt here and
-    // reused by the allocation phase.
+    // Phase 1 — sample environment: per-bud light and light direction.
+    // CSR grouping of buds by internode is rebuilt here and reused by the
+    // allocation phase.
     auto& budOffsets = context.budOffsets_;
     auto& budIndices = context.budIndices_;
     budOffsets.assign(internodeCount + 1, 0);
@@ -137,13 +158,77 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
         }
     }
 
+    graph.computeTipPositions(context.tipPositions_);
+    const auto& tipPositions = context.tipPositions_;
+
+    // Self-shading field: leafy tips (live internodes bearing live buds) cast
+    // shadow. Wood occlusion is ignored until foliage arrives (M7 replaces
+    // the caster set with foliage clusters).
+    const bool selfShading = parameters.shadeModel != ShadeModel::Off;
+    if (selfShading) {
+        auto& casters = context.casterPositions_;
+        casters.clear();
+        for (std::size_t i = 0; i < internodeCount; ++i) {
+            if (graph.internode(static_cast<Index>(i)).alive &&
+                budOffsets[i + 1] > budOffsets[i]) {
+                casters.push_back(tipPositions[i]);
+            }
+        }
+        context.shadowGrid_.build(
+            casters,
+            shadowSettings(parameters, parameters.shadeModel == ShadeModel::VoxelPropagation));
+    }
+
+    auto& budLight = context.budLight_;
+    auto& budLightDirection = context.budLightDirection_;
+    budLight.assign(budCount, 0.0f);
+    budLightDirection.assign(budCount, kUpAxis);
+    for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
+        const Bud& bud = graph.bud(budIndex);
+        if (bud.state == BudState::Dead) {
+            continue;
+        }
+        const Vec3& position = tipPositions[bud.internode];
+        const LightSample base = environment.sampleLight(position);
+        float light = base.intensity;
+        Vec3 direction = base.direction;
+        if (parameters.shadeModel == ShadeModel::VoxelPropagation) {
+            // A leafy tip shades its own voxel; remove that self-contribution
+            // (Palubicki 2009: Q = max(0, C - s + a)).
+            const float shade = std::max(
+                0.0f, context.shadowGrid_.shadowAt(position) - parameters.shadowIntensity);
+            light = std::max(0.0f, base.intensity - shade);
+            if (shade > 0.0f) {
+                const Vec3 escape = context.shadowGrid_.openDirection(position, base.direction);
+                direction = (base.direction + escape * std::min(shade, 1.0f))
+                                .normalizedOr(base.direction);
+            }
+        } else if (parameters.shadeModel == ShadeModel::Raycast) {
+            const std::uint32_t rayCount = std::max(1u, parameters.raycastRayCount);
+            float transmitted = 0.0f;
+            Vec3 weightedDirection{0.0f, 0.0f, 0.0f};
+            for (std::uint32_t ray = 0; ray < rayCount; ++ray) {
+                const Vec3 rayDirection = hemisphereRay(ray, rayCount);
+                const float transmittance =
+                    context.shadowGrid_.transmittanceAlong(position, rayDirection, 1.0f);
+                transmitted += transmittance;
+                weightedDirection += rayDirection * transmittance;
+            }
+            light = base.intensity * (transmitted / static_cast<float>(rayCount));
+            direction = weightedDirection.normalizedOr(base.direction);
+        }
+        budLight[budIndex] = light;
+        budLightDirection[budIndex] = direction;
+    }
+
     // Phase 2 — accumulate energy and live wood volume rootward. Children
     // always have higher indices than parents, so one descending pass each.
     auto& energy = context.energy_;
     energy.assign(internodeCount, 0.0f);
     for (std::size_t i = 0; i < internodeCount; ++i) {
-        const float budCountHere = static_cast<float>(budOffsets[i + 1] - budOffsets[i]);
-        energy[i] = budCountHere * environment.light;
+        for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
+            energy[i] += budLight[budIndices[slot]];
+        }
     }
     for (std::size_t i = internodeCount; i-- > 0;) {
         const Index parent = graph.internode(static_cast<Index>(i)).parent;
@@ -235,9 +320,11 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
             }
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
-            const Bud& bud = graph.bud(budIndices[slot]);
+            const Index budIndex = budIndices[slot];
+            const Bud& bud = graph.bud(budIndex);
             if (bud.state != BudState::Dead) {
-                weightSum += outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+                weightSum += outletBias(parameters, bud.type == BudType::Apical) *
+                             budLight[budIndex];
             }
         }
         if (weightSum <= 0.0f) {
@@ -257,8 +344,9 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
             const Index budIndex = budIndices[slot];
             const Bud& bud = graph.bud(budIndex);
             if (bud.state != BudState::Dead) {
-                budResource[budIndex] =
-                    scale * outletBias(parameters, bud.type == BudType::Apical) * environment.light;
+                budResource[budIndex] = scale *
+                                        outletBias(parameters, bud.type == BudType::Apical) *
+                                        budLight[budIndex];
             }
         }
     }
@@ -294,7 +382,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
             graph.bud(budIndex).state = BudState::Dormant;
             continue;
         }
-        growShoot(plant, parameters, environment, budIndex, metamerCount, step);
+        growShoot(plant, parameters, budLightDirection[budIndex], budIndex, metamerCount, step);
     }
 
     // Phase 7 — secondary thickening: incremental pipe model. Cross-section
@@ -320,7 +408,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters,
     plant.ageSteps = step;
 }
 
-void grow(Plant& plant, const GrowthParameters& parameters, const ConstantEnvironment& environment,
+void grow(Plant& plant, const GrowthParameters& parameters, const Environment& environment,
           std::uint32_t steps, GrowthContext& context) {
     for (std::uint32_t i = 0; i < steps; ++i) {
         growStep(plant, parameters, environment, context);
