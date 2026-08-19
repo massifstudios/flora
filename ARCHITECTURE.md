@@ -1,0 +1,213 @@
+# Flora Architecture
+
+Locked technical decisions. Changes here are deliberate design changes, not implementation
+details. See `RESEARCH.md` for the evidence behind these decisions and `ROADMAP.md` for
+sequencing. Invariants in `CLAUDE.md` override everything.
+
+## 1. Requirements
+
+- Botanically convincing individual trees grown by simulation, not assembled from prefabs.
+- Species defined as data; one preset + seed → recognizable species with believable variation.
+- Deterministic: (version, species, seed, environment, timestep, settings) → identical
+  structure; thread-count independent.
+- Scales: one hero tree (full detail) to hundreds of thousands of simulated forest
+  individuals and millions of rendered instances.
+- Standalone C++20 core; CMake; Linux + Windows; no Unreal/rendering dependency in core.
+- Geometry, export, viewer, Unreal are consumers of simulation structure.
+
+## 2. Non-goals
+
+- Scientific plant physiology (organ-level hormone transport, photosynthesis chemistry).
+- Per-leaf simulation; leaves are instanced clusters attached to structure.
+- Real-time growth in shipping game frame budget (growth is offline/background; runtime
+  consumes baked or streamed results).
+- Cross-platform bit-identical floats (baseline: deterministic per build/platform config,
+  thread-count independent, tested).
+- GPU compute before a profiled CPU reference exists.
+
+## 3. Module layout
+
+```text
+flora-core/       # simulation authority; zero rendering/engine deps
+  math/           # Vec3, Quat, deterministic helpers
+  rng/            # hash-based deterministic streams
+  structure/      # metamers, buds, stem graph, plant state
+  species/        # species definitions, distributions, curves, (de)serialization
+  growth/         # simulation phases, per-plant growth pipeline
+  environment/    # light backends, terrain/soil/climate inputs, query interface
+  spatial/        # grids and neighbor queries
+  forest/         # stand state, distribution, fidelity levels, lifecycle
+  io/             # versioned binary serialization of plants/forests
+flora-geometry/   # ring meshing, junction melding, foliage instancing, LOD, wind metadata
+flora-export/     # glTF, OBJ, compact runtime format
+flora-cli/        # generation, batch, diagnostics, export
+flora-viewer/     # visualization/editing (later; stack chosen when reached)
+integrations/unreal/  # optional adapter (later)
+benchmarks/       # custom micro/macro benchmark harness
+tests/            # doctest-based unit/property/regression tests
+```
+
+Dependency direction: `flora-core` ← `flora-geometry` ← (`flora-export`, `flora-cli`,
+`flora-viewer`, `integrations`). Core knows none of them.
+
+## 4. Coordinate system and units
+
+Right-handed, **+Z up**, meters, radians internally (degrees allowed in species files,
+converted on load). Simulation time in years (fixed steps; sub-annual step count is a
+simulation setting, part of the determinism key). Converters live in exporters/adapters only
+(glTF: +Y up conversion at export; Unreal: cm/left-handed/Z-up at adapter).
+
+## 5. Core representation
+
+### 5.1 Plant structure
+
+A plant is flat arrays of records with stable 32-bit indices (`Index`, invalid = 0xFFFFFFFF):
+
+- **Internode**: parent index, first_child/next_sibling links, unit direction, length (m),
+  base radius (m), branch order, creation step, flags (alive/dead/decaying).
+- **Bud**: bearing internode index, orientation, type (apical/lateral), state
+  (dormant/active/dead), creation step.
+- Positions are derived (root-to-tip walk), never stored as authority.
+- Pruning marks subtrees dead; compaction is explicit, order-preserving, and remaps indices
+  deterministically. Graph invariants (acyclic, valid parents, live references, finite
+  non-negative lengths/radii) must hold after every phase; a `validate()` is test-time and
+  debug-assert enforced.
+
+One heap allocation per array, never per node. No virtual dispatch in structure or growth
+hot paths.
+
+### 5.2 Species
+
+Data, versioned, serializable (JSON on disk). Parameters are **distributions**
+(constant | uniform | normal, with clamps) sampled through deterministic streams, plus
+optional curves over age and branch order. Vocabulary follows RESEARCH.md §1.3 (growth,
+branching, apical dominance, tropisms, thickness, pruning, bending, foliage, geometry hints).
+Schema carries a version integer from day one.
+
+### 5.3 Forest
+
+Array of individuals: position, species id, seed, age, fidelity level, and statistical state
+(height, crown radius, vigor). Identity key is (species, seed, plantId); promotion/demotion
+between fidelity levels regenerates structure deterministically from that key + age.
+
+## 6. Growth simulation
+
+Fixed phase order per step (changing order is an architecture change):
+
+```text
+1 sample environment (light per bud, via active backend)
+2 accumulate energy rootward
+3 allocate resource tipward (apical-control weighted)
+4 bud fate (activate / suppress / kill by light+resource thresholds)
+5 shoot growth (elongate, append metamers, place lateral buds by phyllotaxis)
+6 orient (gravitropism, phototropism, gnarl)
+7 secondary thickening (incremental pipe model, energy-weighted)
+8 shed (cost/production pruning, deadwood decay)
+9 age, mortality
+```
+
+Bending (cantilever + plastic integration) is a high-fidelity sub-phase of 6/7, classified
+APPROXIMATE, skipped below structural fidelity.
+
+### Fidelity classifications
+
+```text
+FULL         raycast per-bud light            hero trees only
+APPROXIMATE  voxel shadow propagation light   structural trees; bending; phyllotaxis
+APPROXIMATE  crown-competition index light    statistical individuals
+BAKE         archetype meshes + impostors     forest rendering
+OMIT         roots (until roadmap), per-leaf physiology, molecular detail
+```
+
+### Fidelity levels
+
+```text
+L0 statistical individual   (allometric growth curves from species params)
+L1 crown + trunk abstraction
+L2 structural plant         (metamer simulation, voxel light)
+L3 hero plant               (raycast light, bending, full geometry)
+```
+
+## 7. Environment
+
+Core defines an abstract environment interface (light query, terrain height, occlusion,
+soil/water scalars). Backends are core-owned implementations (analytic sky, voxel shade
+field, neighbor index); engine adapters may feed *data* in (heightfields, obstacle sets)
+but never own queries. Expensive queries go through `spatial/` acceleration; complexity of
+any query must be documented at the call site of its introduction.
+
+## 8. Determinism
+
+- RNG: stateless hash-based streams (SplitMix64 finalizer over a key tuple), keyed by
+  (worldSeed, purpose/phase id, plantId, entityId, step). No global RNG, no time, no
+  address-based ids. Golden-value tests pin sequences per version.
+- Parallelism model: parallel read/evaluate → synchronize → parallel deterministic apply.
+  Work partitioning never feeds back into state; reductions use fixed ordering.
+- Iteration order: array index order only; no unordered containers on simulation paths.
+- Tests must cover: same-seed reproduction, worker-count independence, stream independence
+  (extra draws in one subsystem don't shift another).
+
+## 9. Geometry pipeline (flora-geometry)
+
+Structure → mesh, disposable output:
+
+- Ring-swept tubes, radial `faces` from species geometry hints, radius-driven ring count
+  decimation and lengthwise ring skipping.
+- Junction melding: child base rings conformed to parent surface, morphed over meld steps.
+- Foliage/fruit: instanced cluster placement from structure tips (threshold, spacing, droop).
+- Wind metadata: branch depth/order, normalized root distance, stiffness proxy, attachment
+  pivots — engine-agnostic vertex/auxiliary channels.
+- Botanical LOD operators (before generic decimation): childless-branch thinning passes,
+  branch-order culling, radial segment reduction, foliage cluster merging → cards →
+  impostor inputs. Silhouette before internal detail.
+
+## 10. Forest strategy
+
+Deussen-1998-style pipeline: deterministic distribution (Poisson-disk with density/species/
+slope/moisture masks, per-cell RNG streams) → L0/L1 stand simulation (neighborhood crown
+competition, growth suppression, lifecycle) → archetype baking (N variants per species ×
+age class, instanced) → hero promotion where needed. Uniqueness budget: biological identity
+for all individuals; unique meshes only for hero/near-field.
+
+## 11. Serialization
+
+All persisted formats versioned (magic + u32 version). Species: JSON. Plant structure &
+forest state: compact little-endian binary, explicit field order, no struct dumps, no
+pointer/address content. Round-trip tests mandatory. Until first release, format changes are
+development-reset (no migration), noted in commit messages.
+
+## 12. Threading
+
+Coarse parallelism across plants (and later forest cells); per-plant growth is
+single-threaded. A minimal job interface (std::thread pool) with deterministic partitioning;
+no locks inside simulation phases. Single-thread reference path always available; equivalence
+across worker counts is a standing test.
+
+## 13. Testing & benchmarks
+
+doctest (vendored single header, MIT) for tests; custom lightweight benchmark harness
+(no external dep) reporting counts, per-op time, and derived throughput; comparative, not
+threshold-flaky. Benchmarks live beside the systems they measure and run from one executable.
+
+## 14. Performance risks (watched)
+
+- Voxel light field memory at forest scale → shared hierarchical/hashed grid, crown-local
+  fallback.
+- Bud count explosion in overproduce-then-shed loop → hard caps per plant + early fate
+  culling (caps are species parameters, part of determinism key).
+- Pruning compaction cost → deferred compaction with dead-fraction threshold.
+- Neighbor queries at 100k+ individuals → uniform/hashed grid, benchmarked against brute
+  force on small deterministic sets.
+
+## 15. Alternatives considered (rejected)
+
+- **L-system core**: poor art control, string rewriting hostile to SoA/parallel, environment
+  coupling awkward. Kept: metamer vocabulary.
+- **Space colonization core**: no time/resource dimension; kept as later crown-constraint
+  and root option.
+- **Weber–Penn geometric core**: no growth/environment; kept: parameter ergonomics.
+- **Per-tip raycast light everywhere** (FloraSynth's documented approach): O(tips × rays ×
+  occluders) unaffordable beyond hero; kept as L3 backend.
+- **ECS framework / general scene graph**: unneeded indirection; flat arrays suffice.
+- **Google Benchmark / GTest deps**: doctest single header + tiny bespoke bench keeps
+  mandatory deps minimal.
