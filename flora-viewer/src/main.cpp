@@ -222,7 +222,7 @@ struct ViewerState {
     std::uint32_t currentSteps = 0;
     SpeciesDefinition species;
     MaterialSet materials;
-    ShadeModel shadeModel = ShadeModel::VoxelPropagation;
+    ShadeModel shadeModel = ShadeModel::VerticalExtinction;
 
     Plant plant;
     GrowthContext context;
@@ -494,11 +494,13 @@ int main(int argc, char** argv) {
                 state.shadeModel = ShadeModel::Off;
             } else if (std::strcmp(mode, "raycast") == 0) {
                 state.shadeModel = ShadeModel::Raycast;
+            } else if (std::strcmp(mode, "voxel") == 0) {
+                state.shadeModel = ShadeModel::VoxelPropagation;
             }
         } else {
             std::fprintf(stderr,
                          "usage: flora-viewer <seed> <steps> [--species file.json] "
-                         "[--materials file.json] [--shade voxel|raycast|off]\n");
+                         "[--materials file.json] [--shade column|voxel|raycast|off]\n");
             return 1;
         }
     }

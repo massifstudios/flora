@@ -128,7 +128,7 @@ int printUsage() {
     std::printf("    --species <file>     species definition JSON (see presets/)\n");
     std::printf("    --obj <path>         write solid branch mesh OBJ (Blender/MeshLab)\n");
     std::printf("    --skeleton <path>    write skeleton line OBJ (debug view)\n");
-    std::printf("    --shade <mode>       self-shading: voxel (default), raycast, off\n");
+    std::printf("    --shade <mode>       self-shading: column (default), voxel, raycast, off\n");
     std::printf("    --materials <file>   material set JSON; writes an .mtl beside the OBJ\n");
     std::printf("    --foliage <mode>     cards (default: one textured twig card per twig,\n");
     std::printf("                         fine branchlets not meshed) or clusters\n");
@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
         const char* objPath = nullptr;
         const char* skeletonPath = nullptr;
         const char* materialsPath = nullptr;
-        ShadeModel shadeModel = ShadeModel::VoxelPropagation;
+        ShadeModel shadeModel = ShadeModel::VerticalExtinction;
         FoliageMode foliageMode = FoliageMode::TwigCards;
         for (int i = 4; i < argc; ++i) {
             if (std::strcmp(argv[i], "--species") == 0 && i + 1 < argc) {
@@ -311,7 +311,9 @@ int main(int argc, char** argv) {
                 }
             } else if (std::strcmp(argv[i], "--shade") == 0 && i + 1 < argc) {
                 const char* mode = argv[++i];
-                if (std::strcmp(mode, "voxel") == 0) {
+                if (std::strcmp(mode, "column") == 0) {
+                    shadeModel = ShadeModel::VerticalExtinction;
+                } else if (std::strcmp(mode, "voxel") == 0) {
                     shadeModel = ShadeModel::VoxelPropagation;
                 } else if (std::strcmp(mode, "raycast") == 0) {
                     shadeModel = ShadeModel::Raycast;

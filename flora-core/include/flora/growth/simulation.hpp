@@ -44,6 +44,9 @@ private:
     std::vector<FoliageCluster> foliageClusters_; // phase 1 placement
     std::vector<float> foliageScratch_;
     std::vector<Vec3> casterPositions_; // cluster positions shading the voxel field
+    std::vector<char> budSuppressed_;  // per bud, apical dominance, phase 1
+    std::vector<float> distanceToApex_; // per internode, along its own axis
+    std::vector<char> apexAlive_;       // per internode, axis apex still living
     std::vector<float> budLight_;     // per bud, phase 1
     std::vector<Vec3> budLightDirection_; // per bud, phase 1
     std::vector<float> energy_;      // per internode, phase 2

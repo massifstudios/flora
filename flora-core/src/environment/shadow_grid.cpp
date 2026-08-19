@@ -50,6 +50,11 @@ void ShadowVoxelGrid::build(const std::vector<Vec3>& casterPositions, const Sett
                       static_cast<std::size_t>(countZ_),
                   0.0f);
 
+    if (settings.mode == Mode::VerticalColumn) {
+        buildVerticalColumns(casterPositions, settings);
+        return;
+    }
+
     const std::int32_t depth = static_cast<std::int32_t>(settings.shadowDepth);
     for (const Vec3& position : casterPositions) {
         std::int32_t casterX = 0;
@@ -78,6 +83,65 @@ void ShadowVoxelGrid::build(const std::vector<Vec3>& casterPositions, const Sett
                 }
             }
             layerShadow /= settings.shadowFalloff;
+        }
+    }
+}
+
+// Casters deposit into their own cell, then one top-down sweep carries shade
+// down every column: shade(z) = shade(z+1) × retention^voxel + deposits(z).
+// Lateral spread mixes each layer with its four neighbours as it descends, so
+// a crown shades a little wider than its own footprint.
+void ShadowVoxelGrid::buildVerticalColumns(const std::vector<Vec3>& casterPositions,
+                                           const Settings& settings) {
+    const std::size_t layerCells =
+        static_cast<std::size_t>(countX_) * static_cast<std::size_t>(countY_);
+
+    // Deposits are per square meter of canopy, not per cell, so the field
+    // means the same thing whichever resolution it is swept at.
+    const float deposit = settings.shadowIntensity / (voxelSize_ * voxelSize_);
+    for (const Vec3& position : casterPositions) {
+        std::int32_t casterX = 0;
+        std::int32_t casterY = 0;
+        std::int32_t casterZ = 0;
+        if (!cellIndex(position, casterX, casterY, casterZ)) {
+            continue;
+        }
+        cells_[static_cast<std::size_t>(casterZ) * layerCells +
+               static_cast<std::size_t>(casterY) * static_cast<std::size_t>(countX_) +
+               static_cast<std::size_t>(casterX)] += deposit;
+    }
+
+    const float retention =
+        std::pow(std::clamp(settings.verticalRetention, 0.0f, 1.0f), voxelSize_);
+    const float spread = std::clamp(settings.lateralSpread * voxelSize_, 0.0f, 0.5f);
+    const float centerWeight = 1.0f - spread;
+    const float sideWeight = spread * 0.25f;
+
+    for (std::int32_t cellZ = countZ_ - 2; cellZ >= 0; --cellZ) {
+        const std::size_t above = static_cast<std::size_t>(cellZ + 1) * layerCells;
+        const std::size_t current = static_cast<std::size_t>(cellZ) * layerCells;
+        for (std::int32_t cellY = 0; cellY < countY_; ++cellY) {
+            for (std::int32_t cellX = 0; cellX < countX_; ++cellX) {
+                const std::size_t offset =
+                    static_cast<std::size_t>(cellY) * static_cast<std::size_t>(countX_) +
+                    static_cast<std::size_t>(cellX);
+                float inherited = cells_[above + offset] * centerWeight;
+                if (cellX > 0) {
+                    inherited += cells_[above + offset - 1] * sideWeight;
+                }
+                if (cellX + 1 < countX_) {
+                    inherited += cells_[above + offset + 1] * sideWeight;
+                }
+                if (cellY > 0) {
+                    inherited +=
+                        cells_[above + offset - static_cast<std::size_t>(countX_)] * sideWeight;
+                }
+                if (cellY + 1 < countY_) {
+                    inherited +=
+                        cells_[above + offset + static_cast<std::size_t>(countX_)] * sideWeight;
+                }
+                cells_[current + offset] += inherited * retention;
+            }
         }
     }
 }

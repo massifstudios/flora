@@ -24,11 +24,27 @@ namespace flora {
 // order (ARCHITECTURE.md §8).
 class ShadowVoxelGrid {
 public:
+    // Pyramids reach only shadowDepth voxels down, which is metres, not crown
+    // heights: under a tall crown the lower branches stay lit and the tree
+    // never lifts its crown. VerticalColumn instead carries shade all the way
+    // down each column with Beer-Lambert extinction, in O(cells) rather than
+    // O(casters × depth³).
+    enum class Mode : std::uint8_t {
+        Pyramid,
+        VerticalColumn,
+    };
+
     struct Settings {
+        Mode mode = Mode::Pyramid;
         float voxelSize = 0.5f;        // meters; enlarged when bounds exceed the cap
         float shadowIntensity = 0.2f;  // shadow added by one caster to its own voxel
-        float shadowFalloff = 2.0f;    // per-layer divisor, > 1
+        float shadowFalloff = 2.0f;    // per-layer divisor, > 1 (Pyramid)
         std::uint32_t shadowDepth = 5; // pyramid layers below the caster
+        // VerticalColumn: fraction of shade surviving one meter further down,
+        // and how far shade spreads sideways per meter of descent (a crown
+        // shades slightly wider than its own footprint).
+        float verticalRetention = 0.86f;
+        float lateralSpread = 0.25f;
         std::uint32_t maxCellsPerAxis = 192; // memory guard
     };
 
@@ -55,6 +71,7 @@ public:
     std::size_t cellCount() const { return cells_.size(); }
 
 private:
+    void buildVerticalColumns(const std::vector<Vec3>& casterPositions, const Settings& settings);
     bool cellIndex(const Vec3& position, std::int32_t& cellX, std::int32_t& cellY,
                    std::int32_t& cellZ) const;
     float cellAt(std::int32_t cellX, std::int32_t cellY, std::int32_t cellZ) const;

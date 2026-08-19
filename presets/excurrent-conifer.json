@@ -61,7 +61,7 @@
     "thicknessGrowthFactor": 2e-05,
     "maintenanceCostPerVolume": 350.0,
     "dropWeakBranchRatio": 0.9,
-    "shadowIntensity": 0.14,
+    "shadowIntensity": 0.02,
     "shadowFalloff": 2.2,
     "leafMaxBearingRadius": 0.015,
     "leafClusterSpacing": {
@@ -81,7 +81,7 @@
     "lateralBudsPerMetamer": 2,
     "budDormancyLimit": 2,
     "branchDecaySteps": 6,
-    "maxInternodes": 100000,
+    "maxInternodes": 45000,
     "leafProductivity": 9.0,
     "maxPathLength": {
       "mean": 52.0,
@@ -89,6 +89,10 @@
       "min": 36.4,
       "max": 65.0
     },
-    "hydraulicFalloff": 4.0
+    "hydraulicFalloff": 4.0,
+    "apicalDominanceRange": 0.4,
+    "branchVigorFalloff": 0.85,
+    "lateralGravitropism": 0.0,
+    "lateralPhototropism": 0.02
   }
 }

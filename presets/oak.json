@@ -4,29 +4,33 @@
   "name": "Oak",
   "parameters": {
     "baseGrowthLength": {
-      "mean": 0.3,
-      "stddev": 0.035,
-      "min": 0.1,
-      "max": 0.6
+      "mean": 0.32,
+      "stddev": 0.018,
+      "min": 0.26,
+      "max": 0.4
     },
     "baseGrowthThickness": 0.012,
     "apicalControl": {
-      "mean": 0.55,
-      "stddev": 0.03,
+      "mean": 0.62,
+      "stddev": 0.02,
       "min": 0.35,
-      "max": 0.85,
+      "max": 0.9,
       "overAge": [
         [
           0,
-          0.72
+          0.78
         ],
         [
           12,
-          0.55
+          0.68
         ],
         [
-          35,
-          0.42
+          30,
+          0.56
+        ],
+        [
+          50,
+          0.48
         ]
       ]
     },
@@ -38,18 +42,18 @@
     },
     "activationThreshold": 0.48,
     "branchAngle": {
-      "mean": 52.0,
+      "mean": 62.0,
       "stddev": 9.0,
-      "min": 25.0,
-      "max": 85.0
+      "min": 30.0,
+      "max": 88.0
     },
     "branchAngleJitter": 8.0,
     "phyllotaxisAngle": 144.0,
     "gravitropism": {
-      "mean": 0.04,
-      "stddev": 0.012,
-      "min": -0.5,
-      "max": 0.5
+      "mean": 0.2,
+      "stddev": 0.02,
+      "min": 0.0,
+      "max": 0.6
     },
     "phototropism": 0.06,
     "gnarl": {
@@ -58,23 +62,23 @@
       "min": 0.0,
       "max": 0.5
     },
-    "thicknessGrowthFactor": 1e-05,
-    "maintenanceCostPerVolume": 380.0,
+    "thicknessGrowthFactor": 4e-05,
+    "maintenanceCostPerVolume": 900.0,
     "dropWeakBranchRatio": 1.0,
     "maxShedFractionPerStep": 0.05,
-    "shadowIntensity": 0.22,
+    "shadowIntensity": 0.02,
     "shadowFalloff": 1.9,
     "leafMaxBearingRadius": 0.022,
     "leafClusterSpacing": {
-      "mean": 0.3,
-      "stddev": 0.03,
-      "min": 0.12,
-      "max": 0.9
+      "mean": 0.5,
+      "stddev": 0.04,
+      "min": 0.2,
+      "max": 1.2
     },
     "leafClusterScale": {
-      "mean": 0.5,
+      "mean": 0.55,
       "stddev": 0.05,
-      "min": 0.12,
+      "min": 0.15,
       "max": 1.5
     },
     "leafDroop": 0.3,
@@ -83,13 +87,23 @@
     "lateralBudsPerMetamer": 1,
     "budDormancyLimit": 4,
     "branchDecaySteps": 6,
-    "maxInternodes": 100000,
+    "maxInternodes": 45000,
     "maxPathLength": {
       "mean": 34.0,
       "stddev": 2.04,
       "min": 23.8,
       "max": 42.5
     },
-    "hydraulicFalloff": 4.0
+    "hydraulicFalloff": 4.0,
+    "lateralGravitropism": {
+      "mean": 0.02,
+      "stddev": 0.008,
+      "min": -0.2,
+      "max": 0.2
+    },
+    "lateralPhototropism": 0.02,
+    "apicalDominanceRange": 0.5,
+    "branchVigorFalloff": 0.8,
+    "shadowVerticalRetention": 0.6
   }
 }

@@ -109,6 +109,22 @@ Fixed phase order per step (changing order is an architecture change):
 
 Shedding runs before allocation so no resource is wasted on doomed branches.
 
+Tree form comes from four mechanisms that separate a leader from its branches;
+without them a plant grows as a coppiced clump of equal stems:
+
+- **Organ-specific tropisms** — the leader is orthotropic (`gravitropism`,
+  `phototropism`), branches are plagiotropic (`lateralGravitropism`,
+  `lateralPhototropism`). One shared value turns every branch into a trunk.
+- **Apical control by order** — each branch order extends `branchVigorFalloff`
+  of the order above it, permanently.
+- **Apical dominance** — lateral buds within `apicalDominanceRange` of an
+  *extending* apex stay latent (they do not draw resource and do not age out).
+  A stalled apex releases them, so a leader that runs out of hydraulic reach
+  turns an excurrent sapling into a decurrent crown by itself.
+- **Borchert-Honda group split** — resource divides between the continuation
+  outlet and the laterals *as a group*, v_m = v·λQ_m / (λQ_m + (1-λ)Q_l).
+  Weighting outlets individually lets numerous laterals outvote the leader.
+
 Size is bounded by hydraulic limitation, not by a height parameter: extension
 growth scales with `1 - (pathLength / maxPathLength)^hydraulicFalloff` over the
 root-to-tip stem path, so shoots shorten as the transport path lengthens and
@@ -155,8 +171,15 @@ Finalized (M6) light query: `Environment::sampleLight(position) -> LightSample
 Terrain/soil/water queries join this interface when their milestones arrive.
 
 Self-shading is simulation-internal, not part of `Environment`: each step rebuilds a
-`ShadowVoxelGrid` from the plant's own leafy tips (Palubicki 2009 shadow propagation;
-build O(casters × depth³), query O(1)). Per-bud light = external sample minus
+`ShadowVoxelGrid` from the plant's own leafy tips. Two fields are available.
+Pyramid propagation (Palubicki 2009; build O(casters × depth³), query O(1))
+reaches only `shadowDepth × voxelSize` below a caster — metres, not crown
+heights, so a tall crown never shades its own lower branches and never lifts.
+`VerticalColumn` instead carries shade down every column with Beer-Lambert
+extinction (`shadowVerticalRetention`, `shadowLateralSpread`) in O(cells),
+swept at canopy resolution (`shadowColumnVoxelSize`); its deposits are per
+square metre of canopy so the field does not change meaning with cell size.
+This is the L2 default: crown lift depends on it. Per-bud light = external sample minus
 accumulated shadow (own contribution excluded); shaded buds steer toward the field's
 negative gradient. Fidelity is a simulation setting (`ShadeModel`): `Off` (reference
 path), `VoxelPropagation` (L2 default), `Raycast` (L3 hero: occupancy grid + fixed

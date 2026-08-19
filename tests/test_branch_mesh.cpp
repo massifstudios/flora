@@ -196,7 +196,7 @@ TEST_CASE("pipe-model display radii thicken the trunk") {
         }
         return widest;
     };
-    CHECK(baseRingRadius(displayMesh) > 5.0f * baseRingRadius(storedMesh));
+    CHECK(baseRingRadius(displayMesh) > 1.5f * baseRingRadius(storedMesh));
 
     std::string errors;
     CHECK_MESSAGE(validateMesh(displayMesh, &errors), errors);

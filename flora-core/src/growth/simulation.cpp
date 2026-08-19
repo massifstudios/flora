@@ -23,11 +23,6 @@ constexpr float kPi = 3.1415927f;
 constexpr float kTwoPi = 6.2831853f;
 constexpr float kGoldenAngle = 2.3999632f;
 
-// Outlet bias: apical/continuation outlets receive λ, lateral outlets 1-λ.
-float outletBias(const GrowthParameters& parameters, bool continuesAxis) {
-    return continuesAxis ? parameters.apicalControl : 1.0f - parameters.apicalControl;
-}
-
 Vec3 randomUnitVector(RandomStream& stream) {
     const float z = stream.uniformFloat(-1.0f, 1.0f);
     const float azimuth = stream.uniformFloat(0.0f, kTwoPi);
@@ -35,14 +30,29 @@ Vec3 randomUnitVector(RandomStream& stream) {
     return {radial * std::cos(azimuth), radial * std::sin(azimuth), z};
 }
 
-ShadowVoxelGrid::Settings shadowSettings(const GrowthParameters& parameters, bool pyramids) {
+ShadowVoxelGrid::Settings shadowSettings(const GrowthParameters& parameters) {
     ShadowVoxelGrid::Settings settings;
     settings.voxelSize = parameters.shadowVoxelSize;
     settings.shadowIntensity = parameters.shadowIntensity;
     settings.shadowFalloff = parameters.shadowFalloff;
-    // Raycast integrates occlusion along rays itself: casters occupy only
-    // their own voxel, no downward propagation.
-    settings.shadowDepth = pyramids ? parameters.shadowDepth : 0;
+    settings.verticalRetention = parameters.shadowVerticalRetention;
+    settings.lateralSpread = parameters.shadowLateralSpread;
+    switch (parameters.shadeModel) {
+    case ShadeModel::VerticalExtinction:
+        settings.mode = ShadowVoxelGrid::Mode::VerticalColumn;
+        settings.voxelSize = parameters.shadowColumnVoxelSize;
+        settings.maxCellsPerAxis = 96;
+        settings.shadowDepth = 0;
+        break;
+    case ShadeModel::VoxelPropagation:
+        settings.shadowDepth = parameters.shadowDepth;
+        break;
+    default:
+        // Raycast integrates occlusion along rays itself: casters occupy only
+        // their own voxel, no downward propagation.
+        settings.shadowDepth = 0;
+        break;
+    }
     return settings;
 }
 
@@ -88,12 +98,23 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
 
     auto stream = RandomStream::derive(plant.seed, RngPurpose::ShootGrowth, budIndex, step);
 
+    // Trunk or branch decides which tropism pair steers this shoot.
+    const std::uint16_t bearingOrder = graph.internode(attachment).branchOrder;
+    const bool orthotropic = bearingOrder == 0 && !startsLateralAxis;
+    const float gravitropism =
+        orthotropic ? parameters.gravitropism : parameters.lateralGravitropism;
+    const float phototropism =
+        orthotropic ? parameters.phototropism : parameters.lateralPhototropism;
+    const std::uint16_t axisOrder =
+        static_cast<std::uint16_t>(bearingOrder + (startsLateralAxis ? 1 : 0));
+    const float orderVigor = std::pow(parameters.branchVigorFalloff, static_cast<float>(axisOrder));
+
     for (std::uint32_t metamer = 0; metamer < metamerCount; ++metamer) {
         // Orientation: previous heading plus tropism pulls plus a random
         // gnarl offset, renormalized. Draw order per metamer: gnarl first,
         // then one branch-angle jitter per whorl bud.
-        const Vec3 steered = direction + kUpAxis * parameters.gravitropism +
-                             lightDirection * parameters.phototropism +
+        const Vec3 steered = direction + kUpAxis * gravitropism +
+                             lightDirection * phototropism +
                              randomUnitVector(stream) * parameters.gnarl;
         direction = steered.normalizedOr(direction);
 
@@ -101,7 +122,7 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
         if (extension < kMinExtensionFactor) {
             break;
         }
-        const float length = parameters.baseGrowthLength * extension;
+        const float length = parameters.baseGrowthLength * extension * orderVigor;
         pathLength += length;
 
         const AxisRelation relation = (metamer == 0 && startsLateralAxis)
@@ -200,6 +221,64 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         pathLength[i] = upstream + node.length;
     }
 
+    // Apical dominance mask: a lateral bud is suppressed while its own axis
+    // apex is alive and closer than apicalDominanceRange along the axis.
+    // Structural, so it is resolved here and honoured by allocation, bud fate
+    // and shoot growth alike — suppressed buds must not draw resource either.
+    auto& suppressed = context.budSuppressed_;
+    suppressed.assign(budCount, 0);
+    if (parameters.apicalDominanceRange > 0.0f) {
+        auto& distanceToApex = context.distanceToApex_;
+        auto& apexAlive = context.apexAlive_;
+        distanceToApex.assign(internodeCount, 0.0f);
+        apexAlive.assign(internodeCount, 0);
+        // Reverse index order: an internode's continuation child is resolved
+        // before the internode itself.
+        for (std::size_t i = internodeCount; i-- > 0;) {
+            const Index index = static_cast<Index>(i);
+            const Internode& node = graph.internode(index);
+            if (!node.alive) {
+                continue;
+            }
+            Index continuation = kInvalidIndex;
+            for (Index child = node.firstChild; child != kInvalidIndex;
+                 child = graph.internode(child).nextSibling) {
+                const Internode& candidate = graph.internode(child);
+                if (candidate.alive && candidate.branchOrder == node.branchOrder) {
+                    continuation = child;
+                    break;
+                }
+            }
+            if (continuation == kInvalidIndex) {
+                // Axis tip: dominance comes from an apex that is still
+                // extending. A stalled apex releases the buds below it, which
+                // is how a leader that has run out of vigour or hydraulic
+                // reach turns an excurrent sapling into a decurrent crown.
+                for (std::uint32_t slot = budOffsets[index]; slot < budOffsets[index + 1]; ++slot) {
+                    const Bud& bud = graph.bud(budIndices[slot]);
+                    if (bud.type == BudType::Apical && bud.state == BudState::Active) {
+                        apexAlive[index] = 1;
+                    }
+                }
+                continue;
+            }
+            distanceToApex[index] = distanceToApex[continuation] +
+                                    graph.internode(continuation).length;
+            apexAlive[index] = apexAlive[continuation];
+        }
+        for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
+            const Bud& bud = graph.bud(budIndex);
+            if (bud.state == BudState::Dead || bud.type != BudType::Lateral) {
+                continue;
+            }
+            const Index bearer = bud.internode;
+            suppressed[budIndex] = (apexAlive[bearer] != 0 &&
+                                    distanceToApex[bearer] < parameters.apicalDominanceRange)
+                                       ? 1
+                                       : 0;
+        }
+    }
+
     // Foliage placement: clusters are the photosynthetic producers and the
     // shadow casters. Thick interior wood bears no leaves, so it produces
     // nothing and (under shading) starves into the shedding phase.
@@ -213,9 +292,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         for (const FoliageCluster& cluster : foliage) {
             casters.push_back(cluster.position);
         }
-        context.shadowGrid_.build(
-            casters,
-            shadowSettings(parameters, parameters.shadeModel == ShadeModel::VoxelPropagation));
+        context.shadowGrid_.build(casters, shadowSettings(parameters));
     }
 
     // Shaded light and dominant light direction at one position. Self
@@ -224,7 +301,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
     // a negligible brightening.
     const auto sampleShadedLight = [&](const Vec3& position) -> LightSample {
         const LightSample base = environment.sampleLight(position);
-        if (parameters.shadeModel == ShadeModel::VoxelPropagation) {
+        if (parameters.shadeModel == ShadeModel::VoxelPropagation ||
+            parameters.shadeModel == ShadeModel::VerticalExtinction) {
             const float shade = std::max(
                 0.0f, context.shadowGrid_.shadowAt(position) - parameters.shadowIntensity);
             LightSample shaded;
@@ -361,44 +439,63 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
         const Internode& node = graph.internode(i);
 
-        float weightSum = 0.0f;
+        // Borchert-Honda: the split is between the continuation outlet and the
+        // laterals *as a group*, v_m = v·λQ_m / (λQ_m + (1-λ)Q_l). Weighting
+        // each outlet on its own instead would let a numerous enough set of
+        // laterals outvote the leader and grow a second trunk.
+        float mainFlux = 0.0f;
+        float lateralFlux = 0.0f;
         for (Index child = node.firstChild; child != kInvalidIndex;
              child = graph.internode(child).nextSibling) {
             const Internode& childNode = graph.internode(child);
-            if (childNode.alive) {
-                const bool continues = childNode.branchOrder == node.branchOrder;
-                weightSum += outletBias(parameters, continues) * energy[child];
+            if (!childNode.alive) {
+                continue;
+            }
+            if (childNode.branchOrder == node.branchOrder) {
+                mainFlux += energy[child];
+            } else {
+                lateralFlux += energy[child];
             }
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Index budIndex = budIndices[slot];
             const Bud& bud = graph.bud(budIndex);
-            if (bud.state != BudState::Dead) {
-                weightSum += outletBias(parameters, bud.type == BudType::Apical) *
-                             budLight[budIndex];
+            if (bud.state == BudState::Dead || suppressed[budIndex] != 0) {
+                continue;
             }
-        }
-        if (weightSum <= 0.0f) {
-            continue;
+            (bud.type == BudType::Apical ? mainFlux : lateralFlux) += budLight[budIndex];
         }
 
-        const float scale = available / weightSum;
+        const float lambda = parameters.apicalControl;
+        const float biasedMain = lambda * mainFlux;
+        const float biasedLateral = (1.0f - lambda) * lateralFlux;
+        const float biasedTotal = biasedMain + biasedLateral;
+        if (biasedTotal <= 0.0f) {
+            continue;
+        }
+        const float mainShare = available * biasedMain / biasedTotal;
+        const float lateralShare = available - mainShare;
+        // Within each group, resource follows collected energy.
+        const float mainScale = mainFlux > 0.0f ? mainShare / mainFlux : 0.0f;
+        const float lateralScale = lateralFlux > 0.0f ? lateralShare / lateralFlux : 0.0f;
+
         for (Index child = node.firstChild; child != kInvalidIndex;
              child = graph.internode(child).nextSibling) {
             const Internode& childNode = graph.internode(child);
-            if (childNode.alive) {
-                const bool continues = childNode.branchOrder == node.branchOrder;
-                resource[child] += scale * outletBias(parameters, continues) * energy[child];
+            if (!childNode.alive) {
+                continue;
             }
+            const bool continues = childNode.branchOrder == node.branchOrder;
+            resource[child] += (continues ? mainScale : lateralScale) * energy[child];
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Index budIndex = budIndices[slot];
             const Bud& bud = graph.bud(budIndex);
-            if (bud.state != BudState::Dead) {
-                budResource[budIndex] = scale *
-                                        outletBias(parameters, bud.type == BudType::Apical) *
-                                        budLight[budIndex];
+            if (bud.state == BudState::Dead || suppressed[budIndex] != 0) {
+                continue;
             }
+            const bool apical = bud.type == BudType::Apical;
+            budResource[budIndex] = (apical ? mainScale : lateralScale) * budLight[budIndex];
         }
     }
 
@@ -412,6 +509,11 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         if (bud.type == BudType::Apical) {
             continue;
         }
+        if (suppressed[budIndex] != 0 && bud.state != BudState::Dead) {
+            bud.state = BudState::Dormant;
+            bud.creationStep = step; // latent under dominance, not aging out
+            continue;
+        }
         if (bud.state == BudState::Dormant && step - bud.creationStep > parameters.budDormancyLimit) {
             bud.state = BudState::Dead;
         }
@@ -422,7 +524,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
     for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
         {
             const Bud& bud = graph.bud(budIndex);
-            if (bud.state == BudState::Dead) {
+            if (bud.state == BudState::Dead || suppressed[budIndex] != 0) {
                 continue;
             }
         }

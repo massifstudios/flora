@@ -76,6 +76,18 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     parameters.maxPathLength = species.maxPathLength.value(stream.normal(0.0f, 1.0f), age);
     parameters.hydraulicFalloff = species.hydraulicFalloff.value(stream.normal(0.0f, 1.0f), age);
     parameters.sapwoodDepth = species.sapwoodDepth.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralGravitropism =
+        species.lateralGravitropism.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralPhototropism =
+        species.lateralPhototropism.value(stream.normal(0.0f, 1.0f), age);
+    parameters.apicalDominanceRange =
+        species.apicalDominanceRange.value(stream.normal(0.0f, 1.0f), age);
+    parameters.branchVigorFalloff =
+        species.branchVigorFalloff.value(stream.normal(0.0f, 1.0f), age);
+    parameters.shadowVerticalRetention =
+        species.shadowVerticalRetention.value(stream.normal(0.0f, 1.0f), age);
+    parameters.shadowLateralSpread =
+        species.shadowLateralSpread.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;

@@ -14,6 +14,9 @@ enum class ShadeModel : std::uint8_t {
     Off,
     VoxelPropagation,
     Raycast,
+    // Shade carried down whole columns instead of a few voxels: what lets a
+    // crown shade out its own lower branches and lift. L2 default.
+    VerticalExtinction,
 };
 
 // Growth control surface materialized per plant and step from a species
@@ -36,17 +39,31 @@ struct GrowthParameters {
     float phyllotaxisAngle = 2.3999632f;  // golden angle, 137.5 deg
     std::uint32_t lateralBudsPerMetamer = 1; // whorls
 
-    // Orientation: per-metamer direction blending weights
-    float gravitropism = 0.08f;  // pull toward +Z (negative droops)
+    // Orientation: per-metamer direction blending weights. Trunk and branches
+    // are different organs here: the leader is orthotropic (chases the
+    // vertical), branches are plagiotropic (hold the angle they left at and
+    // sag under their own weight). One shared value turns every branch into a
+    // second trunk, which is what makes a tree read as a coppiced shrub.
+    float gravitropism = 0.08f;  // pull toward +Z on order-0 shoots (negative droops)
     float phototropism = 0.05f;  // pull toward the per-bud light direction
+    float lateralGravitropism = -0.01f; // same, on branches (order 1 and up)
+    float lateralPhototropism = 0.02f;
     float gnarl = 0.06f;         // random per-metamer offset magnitude
 
     // Self-shading (phase 1). shadowIntensity/shadowFalloff are species
     // biology (foliage density); the rest are fidelity settings.
-    ShadeModel shadeModel = ShadeModel::VoxelPropagation;
-    float shadowIntensity = 0.2f;      // shadow one leafy tip casts on its own voxel
+    ShadeModel shadeModel = ShadeModel::VerticalExtinction;
+    // Shade one leafy cluster casts: per voxel under VoxelPropagation, per
+    // square meter of canopy under VerticalExtinction (which is swept at
+    // canopy resolution, so its field must not depend on cell size).
+    float shadowIntensity = 0.02f;
     float shadowFalloff = 2.0f;        // per-layer divisor, > 1
     float shadowVoxelSize = 0.5f;      // meters
+    // The column field is swept whole every step, so it is resolved at canopy
+    // scale rather than twig scale: cell count, not caster count, is its cost.
+    float shadowColumnVoxelSize = 1.5f; // meters, VerticalExtinction only
+    float shadowVerticalRetention = 0.86f; // shade surviving one meter of descent
+    float shadowLateralSpread = 0.25f;     // sideways bleed per meter of descent
     std::uint32_t shadowDepth = 5;     // pyramid layers
     std::uint32_t raycastRayCount = 32; // hemisphere rays, Raycast backend only
 
@@ -86,6 +103,19 @@ struct GrowthParameters {
     // cost catches up with capped energy (stabilizer until M6 light limits
     // energy naturally).
     float maxShedFractionPerStep = 0.05f;
+
+    // Apical control by order: every branch order extends this fraction of the
+    // order above it, permanently. A branch is a subordinate organ, not just a
+    // shoot that happens to be short of resource -- without the handicap any
+    // lateral that collects enough light overtakes the leader and the tree
+    // grows as a coppiced clump of equals. 1 removes the handicap.
+    float branchVigorFalloff = 1.0f;
+
+    // Apical dominance: lateral buds this far below their axis apex stay
+    // suppressed while that apex lives, so a shoot's own year of growth cannot
+    // branch and the leader keeps its head start. Losing the apex releases the
+    // buds below it. 0 disables suppression (resource competition only).
+    float apicalDominanceRange = 0.0f; // meters of axis path below the apex
 
     // Bud lifecycle
     std::uint32_t budDormancyLimit = 3; // dormant steps before a bud dies

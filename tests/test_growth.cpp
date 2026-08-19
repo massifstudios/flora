@@ -217,9 +217,9 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
     CHECK(height == doctest::Approx(10.585931f).epsilon(0.001));
 }
 
-TEST_CASE("regression: pinned structure for default parameters (voxel shading)") {
+TEST_CASE("regression: pinned structure for default parameters (column shading)") {
     // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
     const Plant plant = grownPlant(42, 14, GrowthParameters{});
-    CHECK(plant.graph.internodeCount() == 526);
-    CHECK(plant.graph.budCount() == 326);
+    CHECK(plant.graph.internodeCount() == 28222);
+    CHECK(plant.graph.budCount() == 23681);
 }

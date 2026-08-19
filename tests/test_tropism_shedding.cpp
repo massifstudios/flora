@@ -36,6 +36,8 @@ GrowthParameters steeringOnly() {
     GrowthParameters parameters;
     parameters.gravitropism = 0.0f;
     parameters.phototropism = 0.0f;
+    parameters.lateralGravitropism = 0.0f;
+    parameters.lateralPhototropism = 0.0f;
     parameters.gnarl = 0.0f;
     parameters.branchAngleJitter = 0.0f;
     parameters.dropWeakBranchRatio = 0.0f; // isolate orientation effects
@@ -48,6 +50,7 @@ TEST_CASE("gravitropism turns lateral growth upward") {
     GrowthParameters neutral = steeringOnly();
     GrowthParameters rising = neutral;
     rising.gravitropism = 0.25f;
+    rising.lateralGravitropism = 0.25f; // branches are steered separately
 
     const Plant flat = grownPlant(21, 14, neutral);
     const Plant lifted = grownPlant(21, 14, rising);
@@ -59,6 +62,7 @@ TEST_CASE("negative gravitropism droops") {
     GrowthParameters neutral = steeringOnly();
     GrowthParameters weeping = neutral;
     weeping.gravitropism = -0.2f;
+    weeping.lateralGravitropism = -0.2f;
 
     const Plant flat = grownPlant(21, 14, neutral);
     const Plant drooped = grownPlant(21, 14, weeping);
