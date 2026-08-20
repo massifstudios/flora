@@ -15,7 +15,7 @@ namespace flora {
 // deterministically materializes the GrowthParameters for that individual at
 // a given age.
 
-inline constexpr std::uint32_t kSpeciesSchemaVersion = 6;
+inline constexpr std::uint32_t kSpeciesSchemaVersion = 7;
 
 // Normal distribution with clamping. stddev 0 collapses to the mean.
 struct Distribution {
@@ -110,6 +110,9 @@ struct SpeciesDefinition {
     // the v5 behavior (plain ±Z pull via lateralGravitropism).
     SpeciesParameter lateralSetPointAngle{{1.2217305f, 0.0f, 0.0f, 3.1415927f}, {}};
     SpeciesParameter lateralSetPointStrength{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    // Schema v7: how a branch's claim on the resource is weighted between its
+    // own production and its meristem count.
+    SpeciesParameter branchAutonomy{{0.5f, 0.0f, 0.0f, 1.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;

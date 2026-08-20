@@ -226,3 +226,61 @@ TEST_CASE("column shading lifts the crown") {
     };
     CHECK(lowestTwig(underColumn.graph, 0.02f) >= lowestTwig(underPyramid.graph, 0.02f));
 }
+
+TEST_CASE("a sapling branches instead of extending as a bare pole") {
+    // Leaves sit on young shoots, so a seedling's whole production comes from
+    // the tip of its leader. Weighting the resource split by production alone
+    // hands that leader everything it collects; the laterals below it have no
+    // leaves of their own yet, so they never clear the activation threshold,
+    // and the plant extends as a bare pole instead of growing the foliage that
+    // would fund a branch.
+    GrowthParameters sapling = treeParameters();
+    sapling.leafBearingTipDistance = 1.4f; // leaves confined to the young shoots
+    sapling.leafClusterScale = 0.55f;
+    sapling.leafProductivity = 6.5f;
+    sapling.leafMaxBearingRadius = 0.015f;
+    sapling.baseGrowthThickness = 0.0025f;
+    sapling.vigorScale = 0.6f;
+    sapling.activationThreshold = 0.48f;
+    sapling.apicalControl = 0.9f;
+    sapling.apicalDominanceRange = 1.0f;
+    sapling.branchAngle = 1.5359f;
+
+    GrowthParameters productionWeighted = sapling;
+    productionWeighted.branchAutonomy = 0.95f;
+    GrowthParameters blended = sapling;
+    blended.branchAutonomy = 0.5f;
+
+    const auto lateralAxes = [](const StemGraph& graph) {
+        std::size_t count = 0;
+        for (Index i = 0; i < static_cast<Index>(graph.internodeCount()); ++i) {
+            const Internode& node = graph.internode(i);
+            if (node.alive && node.parent != kInvalidIndex &&
+                node.branchOrder == graph.internode(node.parent).branchOrder + 1) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    const Plant pole = grownPlant(51, 12, productionWeighted);
+    const Plant branched = grownPlant(51, 12, blended);
+
+    CHECK(lateralAxes(pole.graph) == 0);
+    CHECK(lateralAxes(branched.graph) > 10);
+}
+
+TEST_CASE("branch autonomy shifts resource toward the branches that produce") {
+    GrowthParameters byMeristemCount = treeParameters();
+    byMeristemCount.leafBearingTipDistance = 1.5f;
+    byMeristemCount.branchAutonomy = 0.0f;
+    GrowthParameters byProduction = byMeristemCount;
+    byProduction.branchAutonomy = 0.7f;
+
+    const Plant spread = grownPlant(52, 14, byMeristemCount);
+    const Plant concentrated = grownPlant(52, 14, byProduction);
+
+    // Feeding outlets by what they produce concentrates growth in fewer, more
+    // established branches; feeding them by meristem count spreads it thin.
+    CHECK(concentrated.graph.internodeCount() < spread.graph.internodeCount());
+}

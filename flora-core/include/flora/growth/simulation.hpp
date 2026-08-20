@@ -52,6 +52,7 @@ private:
     std::vector<float> energy_;      // per internode, phase 2
     std::vector<float> woodVolume_;  // per internode subtree, phase 2
     std::vector<float> resource_;    // per internode, phase 4
+    std::vector<float> demand_;      // per internode subtree, accumulated bud light, phase 4
     std::vector<float> budWeight_;   // per bud, brightness-weighted light, phase 4
     std::vector<float> budResource_; // per bud, phase 4
     std::vector<float> loadVolume_;  // per internode subtree, phase 7b

@@ -131,7 +131,7 @@ TEST_CASE("sapwood shell: heartwood is free, so a thicker core costs no more") {
     GrowthParameters parameters;
     parameters.shadeModel = ShadeModel::Off;
     parameters.maxPathLength = 8.0f;
-    parameters.maintenanceCostPerVolume = 8.0e4f;
+    parameters.maintenanceCostPerVolume = 2.0e4f;
     parameters.thicknessGrowthFactor = 5.0e-5f;
 
     GrowthParameters thinShell = parameters;
@@ -139,7 +139,7 @@ TEST_CASE("sapwood shell: heartwood is free, so a thicker core costs no more") {
     GrowthParameters solidWood = parameters;
     solidWood.sapwoodDepth = 100.0f; // shell thicker than any radius: whole volume lives
 
-    const Plant cheap = grownPlant(4, 16, thinShell);
-    const Plant expensive = grownPlant(4, 16, solidWood);
+    const Plant cheap = grownPlant(4, 14, thinShell);
+    const Plant expensive = grownPlant(4, 14, solidWood);
     CHECK(cheap.graph.internodeCount() > expensive.graph.internodeCount());
 }

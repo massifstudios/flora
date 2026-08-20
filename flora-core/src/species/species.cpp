@@ -102,6 +102,7 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
         species.lateralSetPointAngle.value(stream.normal(0.0f, 1.0f), age);
     parameters.lateralSetPointStrength =
         species.lateralSetPointStrength.value(stream.normal(0.0f, 1.0f), age);
+    parameters.branchAutonomy = species.branchAutonomy.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;

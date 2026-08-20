@@ -484,19 +484,41 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
     }
 
-    // Phase 4 — allocate resource tipward across surviving outlets (live
-    // child internodes and live attached buds) by bias-weighted energy.
+    // Phase 4 — allocate resource tipward across surviving outlets (live child
+    // internodes and live attached buds) by bias-weighted demand.
+    //
+    // Demand is accumulated bud light, not collected production: the two are
+    // not commensurable. Production is energy per unit leaf area, so one
+    // foliage cluster outweighs several buds, and a subtree that carries the
+    // leaves always outbids a bare bud beside it. A sapling whose only leaves
+    // sit on its leader can then never fund a lateral, so it never grows the
+    // foliage that would fund one -- it extends as a bare pole instead of
+    // branching. Production still sizes the pie (at the root) and still drives
+    // thickening and shedding; only the split between outlets is by demand.
     auto& resource = context.resource_;
     auto& budResource = context.budResource_;
     auto& budWeight = context.budWeight_;
+    auto& demand = context.demand_;
     resource.assign(internodeCount, 0.0f);
     budResource.assign(budCount, 0.0f);
     budWeight.assign(budCount, 0.0f);
+    demand.assign(internodeCount, 0.0f);
     const bool weightByBrightness = parameters.brightGrowthPriority != 1.0f;
     for (Index budIndex = 0; budIndex < static_cast<Index>(budCount); ++budIndex) {
+        const Bud& bud = graph.bud(budIndex);
         const float light = budLight[budIndex];
         budWeight[budIndex] =
             weightByBrightness ? std::pow(light, parameters.brightGrowthPriority) : light;
+        if (bud.state != BudState::Dead && suppressed[budIndex] == 0 &&
+            graph.internode(bud.internode).alive) {
+            demand[bud.internode] += budWeight[budIndex];
+        }
+    }
+    for (std::size_t i = internodeCount; i-- > 0;) {
+        const Internode& node = graph.internode(static_cast<Index>(i));
+        if (node.alive && node.parent != kInvalidIndex) {
+            demand[node.parent] += demand[i];
+        }
     }
     for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
         const Internode& node = graph.internode(i);
@@ -511,6 +533,41 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
         const Internode& node = graph.internode(i);
 
+        // Outlet weights blend two claims on the resource, each normalized
+        // across this node's outlets so the two are commensurable: how many
+        // growing points an outlet carries (demand) and how much it produces
+        // itself (branch autonomy; Sprugel, Hinckley & Schaap 1991). Demand
+        // alone makes every branch a peer of the leader, since a bud counts the
+        // same wherever it sits; production alone cannot fund a bud that has no
+        // leaves yet, which is every bud on a sapling.
+        float demandTotal = 0.0f;
+        float energyTotal = 0.0f;
+        for (Index child = node.firstChild; child != kInvalidIndex;
+             child = graph.internode(child).nextSibling) {
+            const Internode& childNode = graph.internode(child);
+            if (!childNode.alive) {
+                continue;
+            }
+            demandTotal += demand[child];
+            energyTotal += energy[child];
+        }
+        for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
+            const Index budIndex = budIndices[slot];
+            if (graph.bud(budIndex).state == BudState::Dead || suppressed[budIndex] != 0) {
+                continue;
+            }
+            demandTotal += budWeight[budIndex]; // a bare bud produces nothing yet
+        }
+        if (demandTotal <= 0.0f && energyTotal <= 0.0f) {
+            continue;
+        }
+        const float autonomy = std::clamp(parameters.branchAutonomy, 0.0f, 1.0f);
+        const float demandScale = demandTotal > 0.0f ? (1.0f - autonomy) / demandTotal : 0.0f;
+        const float energyScale = energyTotal > 0.0f ? autonomy / energyTotal : 0.0f;
+        const auto outletWeight = [&](float outletDemand, float outletEnergy) {
+            return outletDemand * demandScale + outletEnergy * energyScale;
+        };
+
         // Borchert-Honda: the split is between the continuation outlet and the
         // laterals *as a group*, v_m = v·λQ_m / (λQ_m + (1-λ)Q_l). Weighting
         // each outlet on its own instead would let a numerous enough set of
@@ -523,11 +580,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             if (!childNode.alive) {
                 continue;
             }
-            if (childNode.branchOrder == node.branchOrder) {
-                mainFlux += energy[child];
-            } else {
-                lateralFlux += energy[child];
-            }
+            const float weight = outletWeight(demand[child], energy[child]);
+            (childNode.branchOrder == node.branchOrder ? mainFlux : lateralFlux) += weight;
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Index budIndex = budIndices[slot];
@@ -535,7 +589,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             if (bud.state == BudState::Dead || suppressed[budIndex] != 0) {
                 continue;
             }
-            (bud.type == BudType::Apical ? mainFlux : lateralFlux) += budWeight[budIndex];
+            (bud.type == BudType::Apical ? mainFlux : lateralFlux) +=
+                outletWeight(budWeight[budIndex], 0.0f);
         }
 
         const float lambda = parameters.apicalControl;
@@ -547,7 +602,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
         const float mainShare = available * biasedMain / biasedTotal;
         const float lateralShare = available - mainShare;
-        // Within each group, resource follows collected energy.
+        // Within each group, resource follows the same blended weight.
         const float mainScale = mainFlux > 0.0f ? mainShare / mainFlux : 0.0f;
         const float lateralScale = lateralFlux > 0.0f ? lateralShare / lateralFlux : 0.0f;
 
@@ -558,7 +613,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 continue;
             }
             const bool continues = childNode.branchOrder == node.branchOrder;
-            resource[child] += (continues ? mainScale : lateralScale) * energy[child];
+            resource[child] +=
+                (continues ? mainScale : lateralScale) * outletWeight(demand[child], energy[child]);
         }
         for (std::uint32_t slot = budOffsets[i]; slot < budOffsets[i + 1]; ++slot) {
             const Index budIndex = budIndices[slot];
@@ -567,7 +623,8 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 continue;
             }
             const bool apical = bud.type == BudType::Apical;
-            budResource[budIndex] = (apical ? mainScale : lateralScale) * budWeight[budIndex];
+            budResource[budIndex] =
+                (apical ? mainScale : lateralScale) * outletWeight(budWeight[budIndex], 0.0f);
         }
     }
 

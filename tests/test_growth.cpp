@@ -205,8 +205,8 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
     GrowthParameters parameters;
     parameters.shadeModel = ShadeModel::Off;
     const Plant plant = grownPlant(42, 10, parameters);
-    CHECK(plant.graph.internodeCount() == 38957);
-    CHECK(plant.graph.budCount() == 38957);
+    CHECK(plant.graph.internodeCount() == 31360);
+    CHECK(plant.graph.budCount() == 31360);
 
     std::vector<Vec3> tips;
     plant.graph.computeTipPositions(tips);
@@ -220,8 +220,8 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
 TEST_CASE("regression: pinned structure for default parameters (column shading)") {
     // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
     const Plant plant = grownPlant(42, 14, GrowthParameters{});
-    CHECK(plant.graph.internodeCount() == 28222);
-    CHECK(plant.graph.budCount() == 23681);
+    CHECK(plant.graph.internodeCount() == 28665);
+    CHECK(plant.graph.budCount() == 24026);
 }
 
 TEST_CASE("shaded terminal growth is dropped, lit growth is kept") {

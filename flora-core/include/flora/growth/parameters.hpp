@@ -36,6 +36,12 @@ struct GrowthParameters {
     // higher values push growth into the lit part of the crown and starve the
     // shaded part. Shade-intolerant species sit high, shade-tolerant low.
     float brightGrowthPriority = 1.0f;
+    // How much of an outlet's claim on the resource follows its own production
+    // rather than the number of growing points it carries (branch autonomy;
+    // Sprugel, Hinckley & Schaap 1991). 0 makes every branch a peer of the
+    // leader; 1 cannot fund a bud that has no leaves of its own yet, so a
+    // sapling extends as a bare pole instead of branching.
+    float branchAutonomy = 0.5f;
 
     // Branching / phyllotaxis
     float branchAngle = 0.7853982f;       // 45 deg

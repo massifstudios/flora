@@ -100,7 +100,7 @@ Fixed phase order per step (changing order is an architecture change):
 3a drop shaded terminal growth (light threshold, childless stems only)
 3b shed weak branches (production vs maintenance cost, before resources are spent)
 4  allocate resource tipward (apical-control weighted, brightness-biased,
-   surviving outlets only)
+   demand/production blended, surviving outlets only)
 5  bud fate (dormancy limits, activation thresholds)
 6  shoot growth with orientation (tropisms + gnarl steer each metamer;
    phyllotactic lateral bud placement)
@@ -143,6 +143,25 @@ without them a plant grows as a coppiced clump of equal stems:
 - **Borchert-Honda group split** — resource divides between the continuation
   outlet and the laterals *as a group*, v_m = v·λQ_m / (λQ_m + (1-λ)Q_l).
   Weighting outlets individually lets numerous laterals outvote the leader.
+
+Q is not collected production. Each outlet's weight blends two claims, both
+normalized across the outlets at that node so they are commensurable:
+accumulated bud light (how many growing points the outlet carries) and
+collected production (what it feeds itself), mixed by `branchAutonomy`
+(Sprugel, Hinckley & Schaap 1991). Both terms are load-bearing:
+
+- production alone is not a currency a bud can hold. Leaves sit on young
+  shoots, so a sapling's whole production comes from the tip of its leader,
+  which then outbids every leafless bud below it. Nothing branches, so no new
+  foliage appears, so nothing can ever branch: the plant extends as a bare pole
+  and only escapes when the apical-control curve finally decays. `branchAutonomy`
+  at 1 reproduces this, and starves every bud, since a bud produces nothing.
+- meristem count alone makes every branch a peer of the leader, because a bud
+  weighs the same wherever it sits. Established limbs never pull ahead, so the
+  crown grows as a thicket of equals with no scaffold limbs.
+
+Production still sizes the pie (`vigorScale × root energy`) and still drives
+thickening and shedding; only the split between outlets is blended.
 
 Size is bounded by hydraulic limitation, not by a height parameter: extension
 growth scales with `1 - (pathLength / maxPathLength)^hydraulicFalloff` over the
