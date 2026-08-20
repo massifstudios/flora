@@ -66,7 +66,7 @@
     "maintenanceCostPerVolume": 1500.0,
     "dropWeakBranchRatio": 1.0,
     "maxShedFractionPerStep": 0.05,
-    "shadowIntensity": 0.12,
+    "shadowIntensity": 6.0,
     "leafMaxBearingRadius": 0.02,
     "leafClusterSpacing": {
       "mean": 0.22,
@@ -89,9 +89,9 @@
     "maxInternodes": 400000,
     "maxPathLength": {
       "mean": 22.0,
-      "stddev": 0.7,
-      "min": 19.0,
-      "max": 25.0
+      "stddev": 0.66,
+      "min": 18.9,
+      "max": 25.1
     },
     "hydraulicFalloff": 2.5,
     "lateralGravitropism": {
@@ -102,7 +102,7 @@
     },
     "lateralPhototropism": 0.02,
     "apicalDominanceRange": 0.5,
-    "branchVigorFalloff": 0.5,
+    "branchVigorFalloff": 0.3,
     "leafBearingTipDistance": {
       "mean": 2.4,
       "stddev": 0.17,
@@ -110,7 +110,7 @@
       "max": 3.6
     },
     "thicknessApicalWeight": 0.55,
-    "dropShadedGrowthLight": 0.45,
+    "dropShadedGrowthLight": 0.5,
     "brightGrowthPriority": 2.4,
     "branchStiffness": {
       "mean": 1500000.0,
