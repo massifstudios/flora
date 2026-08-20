@@ -4,11 +4,12 @@
 // not a renderer.
 //
 //   flora-viewer <seed> <steps> [--species file.json] [--materials file.json]
-//                               [--shade voxel|raycast|off]
+//                               [--shade voxel|raycast|off] [--no-leaves]
 //
 //   1..5     render mode: solid / orders / light / buds / vigor
 //   , .      step back / forward (re-simulates deterministically)
 //   c        foliage: twig cards (branchlets unmeshed) or leaf clusters
+//   l        hide foliage (bare wood, twigs meshed instead of card-culled)
 //   drag     orbit    wheel zoom    right-drag pan
 //   escape   quit
 
@@ -228,6 +229,7 @@ struct ViewerState {
     GrowthContext context;
 
     bool useCards = true;
+    bool showFoliage = true;
     std::vector<TwigCard> cards;
     Mesh barkMesh;
     Mesh leafMesh;
@@ -290,7 +292,12 @@ void rebuildStructures(ViewerState& state) {
     BranchMeshParameters barkParameters;
     barkParameters.uvLengthScale = state.materials.barkUvLengthScale;
     barkParameters.uvGirthScale = state.materials.barkUvLengthScale;
-    if (state.useCards) {
+    if (!state.showFoliage) {
+        // Bare wood: the twigs a card would have covered must be swept, or the
+        // branch structure reads as amputated rather than leafless.
+        state.cards.clear();
+        state.leafMesh = Mesh{};
+    } else if (state.useCards) {
         TwigCardParameters cardParameters;
         cardParameters.maxBearingRadius = parameters.leafMaxBearingRadius;
         cardParameters.aspect = state.materials.foliageAspect;
@@ -458,8 +465,9 @@ void updateWindowTitle(SDL_Window* window, const ViewerState& state) {
                   "flora — %s | seed %llu | step %u/%u | %zu internodes | %zu %s | %zu tris | [%s]",
                   state.species.name.c_str(), static_cast<unsigned long long>(state.seed),
                   state.currentSteps, state.targetSteps, state.plant.graph.internodeCount(),
-                  state.useCards ? state.cards.size() : state.clusters.size(),
-                  state.useCards ? "twig cards" : "leaf clusters",
+                  state.useCards && state.showFoliage ? state.cards.size() : state.clusters.size(),
+                  !state.showFoliage ? "foliage clusters (hidden)"
+                                     : (state.useCards ? "twig cards" : "leaf clusters"),
                   state.barkMesh.triangleCount() + state.leafMesh.triangleCount(), modeName);
     SDL_SetWindowTitle(window, title);
 }
@@ -497,10 +505,13 @@ int main(int argc, char** argv) {
             } else if (std::strcmp(mode, "voxel") == 0) {
                 state.shadeModel = ShadeModel::VoxelPropagation;
             }
+        } else if (std::strcmp(argv[i], "--no-leaves") == 0) {
+            state.showFoliage = false;
         } else {
             std::fprintf(stderr,
                          "usage: flora-viewer <seed> <steps> [--species file.json] "
-                         "[--materials file.json] [--shade column|voxel|raycast|off]\n");
+                         "[--materials file.json] [--shade column|voxel|raycast|off] "
+                         "[--no-leaves]\n");
             return 1;
         }
     }
@@ -568,6 +579,10 @@ int main(int argc, char** argv) {
                 case SDLK_5: state.mode = RenderMode::Vigor; state.structuresDirty = true; break;
                 case SDLK_C:
                     state.useCards = !state.useCards;
+                    state.structuresDirty = true;
+                    break;
+                case SDLK_L:
+                    state.showFoliage = !state.showFoliage;
                     state.structuresDirty = true;
                     break;
                 case SDLK_COMMA:
