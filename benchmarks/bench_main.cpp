@@ -109,7 +109,7 @@ int main() {
         GrowthParameters parameters;
         std::uint64_t grownInternodes = 0;
         GrowthContext context;
-        registry.run("growth/single_tree_voxel_shade_40_steps", 40, "step", [&] {
+        registry.run("growth/single_tree_raycast_shade_40_steps", 40, "step", [&] {
             Plant plant;
             plant.seed = 42;
             plantSeedling(plant, parameters);
@@ -157,17 +157,15 @@ int main() {
                      [&] { grid.build(casters, settings); });
 
         float sink = 0.0f;
-        registry.run("light/voxel_shadow_query_20k", kCasters, "query", [&] {
+        registry.run("light/voxel_density_query_20k", kCasters, "query", [&] {
             sink = 0.0f;
             for (const Vec3& position : casters) {
-                sink += grid.shadowAt(position);
+                sink += grid.densityAt(position);
             }
         });
 
-        ShadowVoxelGrid::Settings occupancy;
-        occupancy.shadowDepth = 0;
         ShadowVoxelGrid rayGrid;
-        rayGrid.build(casters, occupancy);
+        rayGrid.build(casters, settings);
         constexpr std::uint64_t kRayQueries = 1000;
         constexpr std::uint32_t kRaysPerQuery = 32;
         registry.run("light/raycast_query_1k_x32rays", kRayQueries * kRaysPerQuery, "ray", [&] {

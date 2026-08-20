@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 7,
+  "version": 8,
   "name": "Oak",
   "parameters": {
     "baseGrowthLength": {
@@ -67,7 +67,6 @@
     "dropWeakBranchRatio": 1.8,
     "maxShedFractionPerStep": 0.05,
     "shadowIntensity": 0.14,
-    "shadowFalloff": 1.9,
     "leafMaxBearingRadius": 0.015,
     "leafClusterSpacing": {
       "mean": 0.3,
@@ -104,7 +103,6 @@
     "lateralPhototropism": 0.02,
     "apicalDominanceRange": 1.0,
     "branchVigorFalloff": 0.88,
-    "shadowVerticalRetention": 0.6,
     "leafBearingTipDistance": {
       "mean": 1.4,
       "stddev": 0.09,

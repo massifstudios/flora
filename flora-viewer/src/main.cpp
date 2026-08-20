@@ -4,7 +4,7 @@
 // not a renderer.
 //
 //   flora-viewer <seed> <steps> [--species file.json] [--materials file.json]
-//                               [--shade voxel|raycast|off] [--no-leaves]
+//                               [--shade raycast|off] [--no-leaves]
 //
 //   1..5     render mode: solid / orders / light / buds / vigor
 //   , .      step back / forward (re-simulates deterministically)
@@ -223,7 +223,7 @@ struct ViewerState {
     std::uint32_t currentSteps = 0;
     SpeciesDefinition species;
     MaterialSet materials;
-    ShadeModel shadeModel = ShadeModel::VerticalExtinction;
+    ShadeModel shadeModel = ShadeModel::Raycast;
 
     Plant plant;
     GrowthContext context;
@@ -502,15 +502,13 @@ int main(int argc, char** argv) {
                 state.shadeModel = ShadeModel::Off;
             } else if (std::strcmp(mode, "raycast") == 0) {
                 state.shadeModel = ShadeModel::Raycast;
-            } else if (std::strcmp(mode, "voxel") == 0) {
-                state.shadeModel = ShadeModel::VoxelPropagation;
             }
         } else if (std::strcmp(argv[i], "--no-leaves") == 0) {
             state.showFoliage = false;
         } else {
             std::fprintf(stderr,
                          "usage: flora-viewer <seed> <steps> [--species file.json] "
-                         "[--materials file.json] [--shade column|voxel|raycast|off] "
+                         "[--materials file.json] [--shade raycast|off] "
                          "[--no-leaves]\n");
             return 1;
         }

@@ -175,41 +175,15 @@ TEST_CASE("allocation splits main against laterals as a group, not one by one") 
     CHECK(trunkLength(dense.graph) > 0.6f * trunkLength(sparse.graph));
 }
 
-TEST_CASE("column shade reaches the ground under a canopy, pyramid shade does not") {
-    // A canopy patch 10 m up, and a probe far below it.
-    std::vector<Vec3> canopy;
-    for (int x = -4; x <= 4; ++x) {
-        for (int y = -4; y <= 4; ++y) {
-            canopy.push_back(Vec3{static_cast<float>(x) * 0.5f, static_cast<float>(y) * 0.5f,
-                                  10.0f});
-        }
-    }
-    canopy.push_back(Vec3{0.0f, 0.0f, 1.0f}); // keeps the probe inside the grid
-
-    ShadowVoxelGrid::Settings pyramid;
-    pyramid.shadowDepth = 5; // reaches 2.5 m at 0.5 m voxels
-    ShadowVoxelGrid::Settings column;
-    column.mode = ShadowVoxelGrid::Mode::VerticalColumn;
-
-    ShadowVoxelGrid pyramidGrid;
-    ShadowVoxelGrid columnGrid;
-    pyramidGrid.build(canopy, pyramid);
-    columnGrid.build(canopy, column);
-
-    const Vec3 probe{0.0f, 0.0f, 2.0f}; // 8 m below the canopy
-    CHECK(pyramidGrid.shadowAt(probe) == doctest::Approx(0.0f));
-    CHECK(columnGrid.shadowAt(probe) > 0.02f);
-}
-
-TEST_CASE("column shading lifts the crown") {
+TEST_CASE("denser foliage lifts the crown") {
     GrowthParameters open = treeParameters();
-    open.shadeModel = ShadeModel::VerticalExtinction;
+    open.shadeModel = ShadeModel::Raycast;
     open.shadowIntensity = 0.004f;
     GrowthParameters dense = open;
     dense.shadowIntensity = 0.05f; // denser foliage, deeper shade below it
 
-    const Plant underPyramid = grownPlant(8, 16, open);
-    const Plant underColumn = grownPlant(8, 16, dense);
+    const Plant underOpenCanopy = grownPlant(8, 16, open);
+    const Plant underDenseCanopy = grownPlant(8, 16, dense);
 
     // The lowest live twig sits higher when the canopy above it is denser.
     const auto lowestTwig = [](const StemGraph& graph, float maxRadius) {
@@ -224,7 +198,7 @@ TEST_CASE("column shading lifts the crown") {
         }
         return lowest;
     };
-    CHECK(lowestTwig(underColumn.graph, 0.02f) >= lowestTwig(underPyramid.graph, 0.02f));
+    CHECK(lowestTwig(underDenseCanopy.graph, 0.02f) >= lowestTwig(underOpenCanopy.graph, 0.02f));
 }
 
 TEST_CASE("a sapling branches instead of extending as a bare pole") {

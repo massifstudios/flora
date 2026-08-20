@@ -15,7 +15,7 @@ namespace flora {
 // deterministically materializes the GrowthParameters for that individual at
 // a given age.
 
-inline constexpr std::uint32_t kSpeciesSchemaVersion = 7;
+inline constexpr std::uint32_t kSpeciesSchemaVersion = 8;
 
 // Normal distribution with clamping. stddev 0 collapses to the mean.
 struct Distribution {
@@ -69,13 +69,9 @@ struct SpeciesDefinition {
     SpeciesParameter maintenanceCostPerVolume{{400.0f, 0.0f, 0.0f, 1.0e6f}, {}};
     SpeciesParameter dropWeakBranchRatio{{1.0f, 0.0f, 0.0f, 100.0f}, {}};
     SpeciesParameter maxShedFractionPerStep{{0.05f, 0.0f, 0.001f, 1.0f}, {}};
-    // Schema v2: foliage density as shadow cast (shade cast and shade felt
+    // Schema v2: foliage density as shade cast (shade cast and shade felt
     // scale together until per-species tolerance separates them).
-    SpeciesParameter shadowIntensity{{0.02f, 0.0f, 0.0f, 2.0f}, {}};
-    SpeciesParameter shadowFalloff{{2.0f, 0.0f, 1.01f, 10.0f}, {}};
-    // Schema v4: how far a crown's shade reaches down (vertical extinction).
-    SpeciesParameter shadowVerticalRetention{{0.86f, 0.0f, 0.05f, 0.999f}, {}};
-    SpeciesParameter shadowLateralSpread{{0.25f, 0.0f, 0.0f, 0.5f}, {}};
+    SpeciesParameter shadowIntensity{{1.0f, 0.0f, 0.0f, 50.0f}, {}};
     // Schema v2 (M7): foliage placement.
     SpeciesParameter leafMaxBearingRadius{{0.02f, 0.0f, 0.001f, 0.5f}, {}};
     SpeciesParameter leafClusterSpacing{{0.3f, 0.0f, 0.05f, 5.0f}, {}};
@@ -136,6 +132,6 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
 // shadeModel is a fidelity setting layered on top of the species biology.
 void grow(Plant& plant, const SpeciesDefinition& species, const Environment& environment,
           std::uint32_t steps, GrowthContext& context,
-          ShadeModel shadeModel = ShadeModel::VerticalExtinction);
+          ShadeModel shadeModel = ShadeModel::Raycast);
 
 } // namespace flora

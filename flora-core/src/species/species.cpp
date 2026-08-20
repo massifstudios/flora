@@ -65,7 +65,6 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     parameters.maxShedFractionPerStep =
         species.maxShedFractionPerStep.value(stream.normal(0.0f, 1.0f), age);
     parameters.shadowIntensity = species.shadowIntensity.value(stream.normal(0.0f, 1.0f), age);
-    parameters.shadowFalloff = species.shadowFalloff.value(stream.normal(0.0f, 1.0f), age);
     parameters.leafMaxBearingRadius =
         species.leafMaxBearingRadius.value(stream.normal(0.0f, 1.0f), age);
     parameters.leafClusterSpacing =
@@ -84,10 +83,6 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
         species.apicalDominanceRange.value(stream.normal(0.0f, 1.0f), age);
     parameters.branchVigorFalloff =
         species.branchVigorFalloff.value(stream.normal(0.0f, 1.0f), age);
-    parameters.shadowVerticalRetention =
-        species.shadowVerticalRetention.value(stream.normal(0.0f, 1.0f), age);
-    parameters.shadowLateralSpread =
-        species.shadowLateralSpread.value(stream.normal(0.0f, 1.0f), age);
     parameters.thicknessApicalWeight =
         species.thicknessApicalWeight.value(stream.normal(0.0f, 1.0f), age);
     parameters.dropShadedGrowthLight =

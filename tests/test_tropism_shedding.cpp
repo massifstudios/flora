@@ -148,13 +148,19 @@ TEST_CASE("zero set-point strength leaves lateral steering to gravitropism") {
 }
 
 TEST_CASE("phototropism bends growth toward the light direction") {
+    // Shading off: the raycast backend replaces the environment's light
+    // direction with the direction of the clearest sky, which is what is
+    // under test here.
     GrowthParameters parameters = steeringOnly();
     parameters.phototropism = 0.3f;
+    parameters.shadeModel = ShadeModel::Off;
+    GrowthParameters unlit = steeringOnly();
+    unlit.shadeModel = ShadeModel::Off;
 
     ConstantEnvironment sideLight;
     sideLight.lightDirection = Vec3{1.0f, 0.0f, 0.3f}.normalizedOr(kUpAxis);
 
-    const Plant straight = grownPlant(22, 14, steeringOnly());
+    const Plant straight = grownPlant(22, 14, unlit);
     const Plant bent = grownPlant(22, 14, parameters, sideLight);
     CHECK(meanDirectionComponent(bent.graph, &Vec3::x) >
           meanDirectionComponent(straight.graph, &Vec3::x) + 0.1f);

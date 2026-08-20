@@ -34,25 +34,6 @@ ShadowVoxelGrid::Settings shadowSettings(const GrowthParameters& parameters) {
     ShadowVoxelGrid::Settings settings;
     settings.voxelSize = parameters.shadowVoxelSize;
     settings.shadowIntensity = parameters.shadowIntensity;
-    settings.shadowFalloff = parameters.shadowFalloff;
-    settings.verticalRetention = parameters.shadowVerticalRetention;
-    settings.lateralSpread = parameters.shadowLateralSpread;
-    switch (parameters.shadeModel) {
-    case ShadeModel::VerticalExtinction:
-        settings.mode = ShadowVoxelGrid::Mode::VerticalColumn;
-        settings.voxelSize = parameters.shadowColumnVoxelSize;
-        settings.maxCellsPerAxis = 96;
-        settings.shadowDepth = 0;
-        break;
-    case ShadeModel::VoxelPropagation:
-        settings.shadowDepth = parameters.shadowDepth;
-        break;
-    default:
-        // Raycast integrates occlusion along rays itself: casters occupy only
-        // their own voxel, no downward propagation.
-        settings.shadowDepth = 0;
-        break;
-    }
     return settings;
 }
 
@@ -319,26 +300,10 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         context.shadowGrid_.build(casters, shadowSettings(parameters));
     }
 
-    // Shaded light and dominant light direction at one position. Self
-    // contribution is excluded at caster voxels (Palubicki 2009:
-    // Q = max(0, C - s + a)); non-caster positions get the same allowance,
-    // a negligible brightening.
+    // Shaded light and dominant light direction at one position: sky
+    // irradiance attenuated by the foliage the shoot looks through.
     const auto sampleShadedLight = [&](const Vec3& position) -> LightSample {
         const LightSample base = environment.sampleLight(position);
-        if (parameters.shadeModel == ShadeModel::VoxelPropagation ||
-            parameters.shadeModel == ShadeModel::VerticalExtinction) {
-            const float shade = std::max(
-                0.0f, context.shadowGrid_.shadowAt(position) - parameters.shadowIntensity);
-            LightSample shaded;
-            shaded.intensity = std::max(0.0f, base.intensity - shade);
-            shaded.direction = base.direction;
-            if (shade > 0.0f) {
-                const Vec3 escape = context.shadowGrid_.openDirection(position, base.direction);
-                shaded.direction = (base.direction + escape * std::min(shade, 1.0f))
-                                       .normalizedOr(base.direction);
-            }
-            return shaded;
-        }
         if (parameters.shadeModel == ShadeModel::Raycast) {
             const std::uint32_t rayCount = std::max(1u, parameters.raycastRayCount);
             float transmitted = 0.0f;

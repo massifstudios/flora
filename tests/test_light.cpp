@@ -67,43 +67,19 @@ TEST_CASE("environment backends implement the light query interface") {
     CHECK(skySample.direction.z > 0.5f); // dominated by up + high sun
 }
 
-TEST_CASE("shadow grid: one caster shades itself and the pyramid below") {
+TEST_CASE("shadow grid: density stays in the caster's own cell and accumulates") {
     ShadowVoxelGrid grid;
     ShadowVoxelGrid::Settings settings;
     settings.voxelSize = 1.0f;
     settings.shadowIntensity = 0.4f;
-    settings.shadowFalloff = 2.0f;
-    settings.shadowDepth = 3;
 
     const Vec3 caster{0.0f, 0.0f, 10.0f};
-    grid.build({caster}, settings);
+    grid.build({caster, caster}, settings);
 
-    CHECK(grid.shadowAt(caster) == doctest::Approx(0.4f));
-    CHECK(grid.shadowAt(caster + Vec3{0.0f, 0.0f, -1.0f}) == doctest::Approx(0.2f));
-    CHECK(grid.shadowAt(caster + Vec3{0.0f, 0.0f, -2.0f}) == doctest::Approx(0.1f));
-    // Layer 1 spans 3x3: one voxel sideways and down is shaded, sideways only is not.
-    CHECK(grid.shadowAt(caster + Vec3{1.0f, 0.0f, -1.0f}) == doctest::Approx(0.2f));
-    CHECK(grid.shadowAt(caster + Vec3{2.0f, 0.0f, -1.0f}) == doctest::Approx(0.0f));
-    CHECK(grid.shadowAt(caster + Vec3{1.5f, 0.0f, 0.0f}) == doctest::Approx(0.0f));
-    // Nothing propagates upward.
-    CHECK(grid.shadowAt(caster + Vec3{0.0f, 0.0f, 1.5f}) == doctest::Approx(0.0f));
-}
-
-TEST_CASE("shadow grid: open direction points away from the shaded column") {
-    ShadowVoxelGrid grid;
-    ShadowVoxelGrid::Settings settings;
-    settings.voxelSize = 1.0f;
-    settings.shadowDepth = 4;
-    // A dense column of casters; a probe beside it should escape sideways/up.
-    std::vector<Vec3> casters;
-    for (int i = 0; i < 6; ++i) {
-        casters.push_back(Vec3{0.0f, 0.0f, 6.0f + static_cast<float>(i)});
-    }
-    grid.build(casters, settings);
-
-    const Vec3 probe{1.5f, 0.0f, 6.5f}; // one voxel +x of the column
-    const Vec3 escape = grid.openDirection(probe, kUpAxis);
-    CHECK(escape.x > 0.0f); // away from the column
+    CHECK(grid.densityAt(caster) == doctest::Approx(0.8f));
+    CHECK(grid.densityAt(caster + Vec3{0.0f, 0.0f, -1.0f}) == doctest::Approx(0.0f));
+    CHECK(grid.densityAt(caster + Vec3{1.5f, 0.0f, 0.0f}) == doctest::Approx(0.0f));
+    CHECK(grid.densityAt(caster + Vec3{0.0f, 0.0f, 1.5f}) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("shadow grid: transmittance drops under a canopy and is 1 in the open") {
@@ -111,7 +87,6 @@ TEST_CASE("shadow grid: transmittance drops under a canopy and is 1 in the open"
     ShadowVoxelGrid::Settings settings;
     settings.voxelSize = 1.0f;
     settings.shadowIntensity = 1.0f;
-    settings.shadowDepth = 0; // occupancy only, as the raycast backend builds it
 
     const Vec3 below{0.0f, 0.0f, 5.0f};
     std::vector<Vec3> canopy;
@@ -135,7 +110,7 @@ TEST_CASE("self-shading changes morphology: fewer internodes, outer-shell foliag
     GrowthParameters unshaded;
     unshaded.shadeModel = ShadeModel::Off;
     GrowthParameters shaded;
-    shaded.shadeModel = ShadeModel::VoxelPropagation;
+    shaded.shadeModel = ShadeModel::Raycast;
 
     const Plant open = grownPlant(42, 14, unshaded);
     const Plant competing = grownPlant(42, 14, shaded);
@@ -148,7 +123,7 @@ TEST_CASE("self-shading changes morphology: fewer internodes, outer-shell foliag
 }
 
 TEST_CASE("self-shading is deterministic") {
-    const GrowthParameters parameters; // voxel shading is the default
+    const GrowthParameters parameters; // raycast shading is the default
     const Plant first = grownPlant(19, 16, parameters);
     const Plant second = grownPlant(19, 16, parameters);
     REQUIRE(first.graph.internodeCount() == second.graph.internodeCount());
@@ -158,19 +133,19 @@ TEST_CASE("self-shading is deterministic") {
     }
 }
 
-TEST_CASE("raycast backend grows a valid tree distinct from the voxel backend") {
-    GrowthParameters voxel;
-    voxel.shadeModel = ShadeModel::VoxelPropagation;
+TEST_CASE("raycast backend grows a valid tree distinct from the unshaded one") {
+    GrowthParameters unshaded;
+    unshaded.shadeModel = ShadeModel::Off;
     GrowthParameters raycast;
     raycast.shadeModel = ShadeModel::Raycast;
 
-    const Plant voxelPlant = grownPlant(23, 12, voxel);
+    const Plant openPlant = grownPlant(23, 12, unshaded);
     const Plant raycastPlant = grownPlant(23, 12, raycast);
     const Plant raycastAgain = grownPlant(23, 12, raycast);
 
     CHECK(raycastPlant.graph.internodeCount() > 1); // it grows
     CHECK(raycastPlant.graph.internodeCount() == raycastAgain.graph.internodeCount());
-    CHECK(raycastPlant.graph.internodeCount() != voxelPlant.graph.internodeCount());
+    CHECK(raycastPlant.graph.internodeCount() != openPlant.graph.internodeCount());
 
     std::string errors;
     CHECK_MESSAGE(raycastPlant.graph.validate(&errors), errors);
@@ -199,7 +174,6 @@ TEST_CASE("raycast sky weights the zenith over the horizon") {
         ShadowVoxelGrid grid;
         ShadowVoxelGrid::Settings settings;
         settings.shadowIntensity = parameters.shadowIntensity;
-        settings.shadowDepth = 0;
         std::vector<Vec3> casters;
         casters.push_back(Vec3{}); // anchors the grid over the sample point
         for (int i = -6; i <= 6; ++i) {

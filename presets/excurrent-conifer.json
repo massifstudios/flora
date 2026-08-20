@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 3,
+  "version": 8,
   "name": "Excurrent Conifer",
   "parameters": {
     "baseGrowthLength": {
@@ -62,7 +62,6 @@
     "maintenanceCostPerVolume": 350.0,
     "dropWeakBranchRatio": 0.9,
     "shadowIntensity": 0.02,
-    "shadowFalloff": 2.2,
     "leafMaxBearingRadius": 0.015,
     "leafClusterSpacing": {
       "mean": 0.22,

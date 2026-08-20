@@ -20,7 +20,7 @@ struct FloatEntry {
     bool isAngle; // degrees in JSON, radians in memory
 };
 
-constexpr std::array<FloatEntry, 40> kFloatEntries = {{
+constexpr std::array<FloatEntry, 37> kFloatEntries = {{
     {"baseGrowthLength", &SpeciesDefinition::baseGrowthLength, false},
     {"baseGrowthThickness", &SpeciesDefinition::baseGrowthThickness, false},
     {"apicalControl", &SpeciesDefinition::apicalControl, false},
@@ -37,7 +37,6 @@ constexpr std::array<FloatEntry, 40> kFloatEntries = {{
     {"dropWeakBranchRatio", &SpeciesDefinition::dropWeakBranchRatio, false},
     {"maxShedFractionPerStep", &SpeciesDefinition::maxShedFractionPerStep, false},
     {"shadowIntensity", &SpeciesDefinition::shadowIntensity, false},
-    {"shadowFalloff", &SpeciesDefinition::shadowFalloff, false},
     {"leafMaxBearingRadius", &SpeciesDefinition::leafMaxBearingRadius, false},
     {"leafClusterSpacing", &SpeciesDefinition::leafClusterSpacing, false},
     {"leafClusterScale", &SpeciesDefinition::leafClusterScale, false},
@@ -50,8 +49,6 @@ constexpr std::array<FloatEntry, 40> kFloatEntries = {{
     {"lateralPhototropism", &SpeciesDefinition::lateralPhototropism, false},
     {"apicalDominanceRange", &SpeciesDefinition::apicalDominanceRange, false},
     {"branchVigorFalloff", &SpeciesDefinition::branchVigorFalloff, false},
-    {"shadowVerticalRetention", &SpeciesDefinition::shadowVerticalRetention, false},
-    {"shadowLateralSpread", &SpeciesDefinition::shadowLateralSpread, false},
     {"thicknessApicalWeight", &SpeciesDefinition::thicknessApicalWeight, false},
     {"dropShadedGrowthLight", &SpeciesDefinition::dropShadedGrowthLight, false},
     {"brightGrowthPriority", &SpeciesDefinition::brightGrowthPriority, false},

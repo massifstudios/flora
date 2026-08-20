@@ -40,9 +40,9 @@ suppression, thickness monotonicity, prune correctness).
 
 ## M6 — Light and space competition  ✅
 
-Voxel shadow-propagation backend + analytic sky; environment query interface finalized;
-self-shading changes morphology tests; hero raycast backend (L3) behind same interface.
-Light query benchmarks.
+Foliage-density voxel field + analytic sky; environment query interface finalized;
+self-shading changes morphology tests; raycast per-bud light (cosine-weighted hemisphere
+rays) as the only shading backend. Light query benchmarks.
 
 ## M7 — Foliage  ✅
 

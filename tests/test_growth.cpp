@@ -217,11 +217,11 @@ TEST_CASE("regression: pinned structure for the reference path (shading off)") {
     CHECK(height == doctest::Approx(10.585931f).epsilon(0.001));
 }
 
-TEST_CASE("regression: pinned structure for default parameters (column shading)") {
+TEST_CASE("regression: pinned structure for default parameters (raycast shading)") {
     // Golden snapshot for (seed 42, 14 steps, defaults). Same rule as above.
     const Plant plant = grownPlant(42, 14, GrowthParameters{});
-    CHECK(plant.graph.internodeCount() == 28665);
-    CHECK(plant.graph.budCount() == 24026);
+    CHECK(plant.graph.internodeCount() == 7187);
+    CHECK(plant.graph.budCount() == 5727);
 }
 
 TEST_CASE("shaded terminal growth is dropped, lit growth is kept") {
@@ -266,7 +266,7 @@ TEST_CASE("brightness priority concentrates growth in the lit part of the crown"
     auto shadedFraction = [](float priority) {
         GrowthParameters parameters;
         parameters.brightGrowthPriority = priority;
-        parameters.shadeModel = ShadeModel::VerticalExtinction;
+        parameters.shadeModel = ShadeModel::Raycast;
         parameters.shadowIntensity = 0.15f;
         Plant plant;
         plant.seed = 3;

@@ -189,9 +189,9 @@ tropisms alone never respond to load.
 ### Fidelity classifications
 
 ```text
-FULL         raycast per-bud light            hero trees only
-APPROXIMATE  voxel shadow propagation light   structural trees; bending; phyllotaxis;
-                                             gravitropic set-point angle
+FULL         raycast per-bud light            every simulated structural plant
+APPROXIMATE  voxel foliage-density medium     the occluder rays march through; bending;
+                                             phyllotaxis; gravitropic set-point angle
 APPROXIMATE  crown-competition index light    statistical individuals
 BAKE         archetype meshes + impostors     forest rendering
 OMIT         roots (until roadmap), per-leaf physiology, molecular detail
@@ -202,7 +202,7 @@ OMIT         roots (until roadmap), per-leaf physiology, molecular detail
 ```text
 L0 statistical individual   (allometric growth curves from species params)
 L1 crown + trunk abstraction
-L2 structural plant         (metamer simulation, voxel light)
+L2 structural plant         (metamer simulation, raycast light, coarser grid)
 L3 hero plant               (raycast light, bending, full geometry)
 ```
 
@@ -225,21 +225,19 @@ Weighting rays equally credits a limb under a crown with a full sky's worth of g
 and keeps the understorey alive, which flattens a tree's crown against the ground.
 
 Self-shading is simulation-internal, not part of `Environment`: each step rebuilds a
-`ShadowVoxelGrid` from the plant's own leafy tips. Two fields are available.
-Pyramid propagation (Palubicki 2009; build O(casters × depth³), query O(1))
-reaches only `shadowDepth × voxelSize` below a caster — metres, not crown
-heights, so a tall crown never shades its own lower branches and never lifts.
-`VerticalColumn` instead carries shade down every column with Beer-Lambert
-extinction (`shadowVerticalRetention`, `shadowLateralSpread`) in O(cells),
-swept at canopy resolution (`shadowColumnVoxelSize`); its deposits are per
-square metre of canopy so the field does not change meaning with cell size.
-This is the L2 default: crown lift depends on it. Per-bud light = external sample minus
-accumulated shadow (own contribution excluded); shaded buds steer toward the field's
-negative gradient. Fidelity is a simulation setting (`ShadeModel`): `Off` (reference
-path), `VoxelPropagation` (L2 default), `Raycast` (L3 hero: occupancy grid + fixed
-Fibonacci-hemisphere rays, transmittance-weighted light direction). Casters are foliage
-clusters (M7). At forest scale the grid becomes shared per-cell rather than per-plant
-(§14).
+`ShadowVoxelGrid` of foliage density from the plant's own leafy clusters, one deposit
+(`shadowIntensity`) per caster cell, no propagation through the field. Per-bud light is the
+external sample scaled by the cosine-weighted mean transmittance of fixed
+Fibonacci-hemisphere rays marched through that field (Beer-Lambert absorption, DDA cell
+walk, the caster's own cell skipped); the light direction a bud steers toward is the
+transmittance-weighted mean ray, i.e. the direction of the clearest sky. Build is
+O(casters), one ray query O(cells along the ray). Fidelity is a simulation setting
+(`ShadeModel`): `Off` (reference path, external light only) or `Raycast` (the default).
+The propagation fields that preceded it — pyramid stencils (Palubicki 2009) and vertical
+Beer-Lambert columns — were removed: a stencil that reaches a fixed depth below a caster
+cannot lift the crown of a tall tree, and neither field resolves the sky direction a shoot
+actually sees. Casters are foliage clusters (M7). At forest scale the grid becomes shared
+per-cell rather than per-plant (§14).
 
 Foliage (M7): clusters are derived data, recomputed from structure each step by a
 deterministic O(n) placement pass (live internodes within `leafBearingTipDistance` of the

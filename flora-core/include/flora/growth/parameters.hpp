@@ -7,16 +7,12 @@
 namespace flora {
 
 // Self-shading fidelity backend (ARCHITECTURE.md §6): Off is the reference
-// path (external environment light only), VoxelPropagation the L2 structural
-// default, Raycast the L3 hero backend. A simulation setting, not species
-// biology: it never comes from species files.
+// path (external environment light only), Raycast integrates sky occlusion
+// through the foliage-density grid. A simulation setting, not species biology:
+// it never comes from species files.
 enum class ShadeModel : std::uint8_t {
     Off,
-    VoxelPropagation,
     Raycast,
-    // Shade carried down whole columns instead of a few voxels: what lets a
-    // crown shade out its own lower branches and lift. L2 default.
-    VerticalExtinction,
 };
 
 // Growth control surface materialized per plant and step from a species
@@ -68,22 +64,15 @@ struct GrowthParameters {
     float lateralSetPointStrength = 0.0f;      // 0 disables (plain ±Z pull)
     float gnarl = 0.06f;         // random per-metamer offset magnitude
 
-    // Self-shading (phase 1). shadowIntensity/shadowFalloff are species
-    // biology (foliage density); the rest are fidelity settings.
-    ShadeModel shadeModel = ShadeModel::VerticalExtinction;
-    // Shade one leafy cluster casts: per voxel under VoxelPropagation, per
-    // square meter of canopy under VerticalExtinction (which is swept at
-    // canopy resolution, so its field must not depend on cell size).
-    float shadowIntensity = 0.02f;
-    float shadowFalloff = 2.0f;        // per-layer divisor, > 1
-    float shadowVoxelSize = 0.5f;      // meters
-    // The column field is swept whole every step, so it is resolved at canopy
-    // scale rather than twig scale: cell count, not caster count, is its cost.
-    float shadowColumnVoxelSize = 1.5f; // meters, VerticalExtinction only
-    float shadowVerticalRetention = 0.86f; // shade surviving one meter of descent
-    float shadowLateralSpread = 0.25f;     // sideways bleed per meter of descent
-    std::uint32_t shadowDepth = 5;     // pyramid layers
-    std::uint32_t raycastRayCount = 32; // hemisphere rays, Raycast backend only
+    // Self-shading (phase 1). shadowIntensity is species biology (foliage
+    // density); the rest are fidelity settings.
+    ShadeModel shadeModel = ShadeModel::Raycast;
+    // Foliage density one leafy cluster contributes to its own voxel; rays
+    // are absorbed along their path through it (Beer-Lambert, so this is an
+    // absorption coefficient per meter of ray, not a subtracted shade value).
+    float shadowIntensity = 1.0f;
+    float shadowVoxelSize = 0.5f;       // meters
+    std::uint32_t raycastRayCount = 32; // hemisphere rays
 
     // Foliage placement (derived per step; structure/foliage.hpp). Clusters
     // are the photosynthetic producers and the shadow casters.
