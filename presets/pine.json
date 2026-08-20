@@ -1,0 +1,128 @@
+{
+  "format": "flora-species",
+  "version": 7,
+  "name": "Pine",
+  "parameters": {
+    "baseGrowthLength": {
+      "mean": 0.5,
+      "stddev": 0.015,
+      "min": 0.4,
+      "max": 0.6
+    },
+    "baseGrowthThickness": 0.0025,
+    "apicalControl": {
+      "mean": 0.82,
+      "stddev": 0.008,
+      "min": 0.5,
+      "max": 0.95,
+      "overAge": [
+        [
+          0,
+          0.82
+        ],
+        [
+          20,
+          0.78
+        ],
+        [
+          45,
+          0.66
+        ],
+        [
+          80,
+          0.51
+        ]
+      ]
+    },
+    "vigorScale": {
+      "mean": 0.6,
+      "stddev": 0.015,
+      "min": 0.4,
+      "max": 0.9
+    },
+    "activationThreshold": 0.4,
+    "branchAngle": {
+      "mean": 74.0,
+      "stddev": 4.0,
+      "min": 55.0,
+      "max": 92.0
+    },
+    "branchAngleJitter": 4.0,
+    "phyllotaxisAngle": 137.5,
+    "gravitropism": {
+      "mean": 0.35,
+      "stddev": 0.02,
+      "min": 0.1,
+      "max": 0.7
+    },
+    "phototropism": 0.03,
+    "gnarl": {
+      "mean": 0.03,
+      "stddev": 0.006,
+      "min": 0.0,
+      "max": 0.2
+    },
+    "thicknessGrowthFactor": 1.4e-05,
+    "maintenanceCostPerVolume": 1500.0,
+    "dropWeakBranchRatio": 1.0,
+    "maxShedFractionPerStep": 0.05,
+    "shadowIntensity": 0.12,
+    "shadowFalloff": 1.9,
+    "leafMaxBearingRadius": 0.02,
+    "leafClusterSpacing": {
+      "mean": 0.22,
+      "stddev": 0.022,
+      "min": 0.12,
+      "max": 0.7
+    },
+    "leafClusterScale": {
+      "mean": 0.3,
+      "stddev": 0.03,
+      "min": 0.14,
+      "max": 0.9
+    },
+    "leafDroop": 0.05,
+    "leafProductivity": 25.0,
+    "maxMetamersPerShoot": 1,
+    "lateralBudsPerMetamer": 4,
+    "budDormancyLimit": 4,
+    "branchDecaySteps": 5,
+    "maxInternodes": 400000,
+    "maxPathLength": {
+      "mean": 22.0,
+      "stddev": 0.7,
+      "min": 19.0,
+      "max": 25.0
+    },
+    "hydraulicFalloff": 2.5,
+    "lateralGravitropism": {
+      "mean": 0.0,
+      "stddev": 0.008,
+      "min": -0.08,
+      "max": 0.1
+    },
+    "lateralPhototropism": 0.02,
+    "apicalDominanceRange": 0.5,
+    "branchVigorFalloff": 0.5,
+    "shadowVerticalRetention": 0.7,
+    "leafBearingTipDistance": {
+      "mean": 2.4,
+      "stddev": 0.17,
+      "min": 1.2,
+      "max": 3.6
+    },
+    "thicknessApicalWeight": 0.55,
+    "dropShadedGrowthLight": 0.45,
+    "brightGrowthPriority": 2.4,
+    "branchStiffness": {
+      "mean": 1500000.0,
+      "stddev": 90000.0,
+      "min": 200000.0,
+      "max": 5000000.0
+    },
+    "bendIntegration": 0.18,
+    "lateralSetPointAngle": 76.0,
+    "lateralSetPointStrength": 0.4,
+    "branchAutonomy": 0.3
+  }
+}
