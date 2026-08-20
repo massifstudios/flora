@@ -1,6 +1,6 @@
 {
   "format": "flora-species",
-  "version": 5,
+  "version": 6,
   "name": "Oak",
   "parameters": {
     "baseGrowthLength": {
@@ -9,7 +9,7 @@
       "min": 0.26,
       "max": 0.4
     },
-    "baseGrowthThickness": 0.012,
+    "baseGrowthThickness": 0.0025,
     "apicalControl": {
       "mean": 0.62,
       "stddev": 0.02,
@@ -66,9 +66,9 @@
     "maintenanceCostPerVolume": 2400.0,
     "dropWeakBranchRatio": 1.8,
     "maxShedFractionPerStep": 0.05,
-    "shadowIntensity": 0.03,
+    "shadowIntensity": 0.055,
     "shadowFalloff": 1.9,
-    "leafMaxBearingRadius": 0.08,
+    "leafMaxBearingRadius": 0.015,
     "leafClusterSpacing": {
       "mean": 0.3,
       "stddev": 0.03,
@@ -103,7 +103,7 @@
     },
     "lateralPhototropism": 0.02,
     "apicalDominanceRange": 1.0,
-    "branchVigorFalloff": 0.95,
+    "branchVigorFalloff": 0.88,
     "shadowVerticalRetention": 0.6,
     "leafBearingTipDistance": {
       "mean": 1.4,
@@ -112,7 +112,7 @@
       "max": 2.2
     },
     "thicknessApicalWeight": 0.4,
-    "dropShadedGrowthLight": 0.75,
+    "dropShadedGrowthLight": 0.82,
     "brightGrowthPriority": 1.15,
     "branchStiffness": {
       "mean": 800000.0,
@@ -120,6 +120,8 @@
       "min": 50000.0,
       "max": 5000000.0
     },
-    "bendIntegration": 0.3
+    "bendIntegration": 0.3,
+    "lateralSetPointAngle": 58.0,
+    "lateralSetPointStrength": 0.25
   }
 }
