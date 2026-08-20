@@ -20,7 +20,7 @@ struct FloatEntry {
     bool isAngle; // degrees in JSON, radians in memory
 };
 
-constexpr std::array<FloatEntry, 37> kFloatEntries = {{
+constexpr std::array<FloatEntry, 39> kFloatEntries = {{
     {"baseGrowthLength", &SpeciesDefinition::baseGrowthLength, false},
     {"baseGrowthThickness", &SpeciesDefinition::baseGrowthThickness, false},
     {"apicalControl", &SpeciesDefinition::apicalControl, false},
@@ -58,6 +58,8 @@ constexpr std::array<FloatEntry, 37> kFloatEntries = {{
     {"branchStiffness", &SpeciesDefinition::branchStiffness, false},
     {"bendIntegration", &SpeciesDefinition::bendIntegration, false},
     {"leafBearingTipDistance", &SpeciesDefinition::leafBearingTipDistance, false},
+    {"lateralSetPointAngle", &SpeciesDefinition::lateralSetPointAngle, true},
+    {"lateralSetPointStrength", &SpeciesDefinition::lateralSetPointStrength, false},
 }};
 
 struct IntegerEntry {

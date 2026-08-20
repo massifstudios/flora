@@ -52,6 +52,14 @@ struct GrowthParameters {
     float phototropism = 0.05f;  // pull toward the per-bud light direction
     float lateralGravitropism = -0.01f; // same, on branches (order 1 and up)
     float lateralPhototropism = 0.02f;
+    // Gravitropic set-point angle: the angle from vertical a branch actively
+    // holds (Digby & Firn 1995). A plain +Z pull turns every branch into a
+    // second trunk and a plain -Z pull sends it to the ground; a set point is
+    // restoring, so a limb that sags under load or wanders off in a random
+    // walk steers back to its species angle and its tip turns up again.
+    // Replaces lateralGravitropism on branch shoots when strength > 0.
+    float lateralSetPointAngle = 1.2217305f;   // 70 deg from +Z
+    float lateralSetPointStrength = 0.0f;      // 0 disables (plain ±Z pull)
     float gnarl = 0.06f;         // random per-metamer offset magnitude
 
     // Self-shading (phase 1). shadowIntensity/shadowFalloff are species

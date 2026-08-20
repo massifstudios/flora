@@ -98,6 +98,10 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     parameters.bendIntegration = species.bendIntegration.value(stream.normal(0.0f, 1.0f), age);
     parameters.leafBearingTipDistance =
         species.leafBearingTipDistance.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralSetPointAngle =
+        species.lateralSetPointAngle.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralSetPointStrength =
+        species.lateralSetPointStrength.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;

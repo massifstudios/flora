@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -68,6 +69,82 @@ TEST_CASE("negative gravitropism droops") {
     const Plant drooped = grownPlant(21, 14, weeping);
     CHECK(meanDirectionComponent(drooped.graph, &Vec3::z) <
           meanDirectionComponent(flat.graph, &Vec3::z) - 0.1f);
+}
+
+TEST_CASE("branches steer toward the gravitropic set-point angle") {
+    const auto meanAngleFromVertical = [](const StemGraph& graph) {
+        float sum = 0.0f;
+        std::size_t counted = 0;
+        for (const Internode& node : graph.internodes()) {
+            if (node.alive && node.branchOrder > 0) {
+                sum += std::acos(std::clamp(node.direction.z, -1.0f, 1.0f));
+                ++counted;
+            }
+        }
+        return counted > 0 ? sum / static_cast<float>(counted) : 0.0f;
+    };
+
+    GrowthParameters raised = steeringOnly();
+    raised.lateralSetPointAngle = 0.5236f; // 30 deg from vertical
+    raised.lateralSetPointStrength = 0.4f;
+    GrowthParameters lowered = raised;
+    lowered.lateralSetPointAngle = 2.0944f; // 120 deg: below horizontal
+
+    const Plant upswept = grownPlant(24, 14, raised);
+    const Plant weeping = grownPlant(24, 14, lowered);
+
+    CHECK(meanAngleFromVertical(upswept.graph) < 1.0f);  // pulled up toward 30 deg
+    CHECK(meanAngleFromVertical(weeping.graph) > 1.6f);  // pushed past horizontal
+    CHECK(meanDirectionComponent(upswept.graph, &Vec3::z) >
+          meanDirectionComponent(weeping.graph, &Vec3::z) + 0.3f);
+}
+
+TEST_CASE("the set point holds branch inclination against gnarl drift") {
+    // The point of a set point over a plain ±Z pull: it is restoring. Gnarl and
+    // stacked branch angles are a random walk over inclination, so without a
+    // set point deep orders end up pointing anywhere, half of them at the
+    // ground.
+    const float setPoint = 1.0472f; // 60 deg from vertical
+    const auto meanDeviationFrom = [setPoint](const StemGraph& graph) {
+        float sum = 0.0f;
+        std::size_t counted = 0;
+        for (const Internode& node : graph.internodes()) {
+            if (node.alive && node.branchOrder > 0) {
+                sum += std::fabs(std::acos(std::clamp(node.direction.z, -1.0f, 1.0f)) - setPoint);
+                ++counted;
+            }
+        }
+        return counted > 0 ? sum / static_cast<float>(counted) : 0.0f;
+    };
+
+    GrowthParameters drifting = steeringOnly();
+    drifting.gnarl = 0.2f;
+    drifting.branchAngle = 1.5708f;
+    GrowthParameters holding = drifting;
+    holding.lateralSetPointAngle = setPoint;
+    holding.lateralSetPointStrength = 0.3f;
+
+    const Plant wandered = grownPlant(25, 16, drifting);
+    const Plant held = grownPlant(25, 16, holding);
+    CHECK(meanDeviationFrom(held.graph) < meanDeviationFrom(wandered.graph) * 0.6f);
+    CHECK(meanDirectionComponent(held.graph, &Vec3::z) >
+          meanDirectionComponent(wandered.graph, &Vec3::z) + 0.1f);
+}
+
+TEST_CASE("zero set-point strength leaves lateral steering to gravitropism") {
+    GrowthParameters plain = steeringOnly();
+    plain.lateralGravitropism = 0.2f;
+    GrowthParameters withUnusedSetPoint = plain;
+    withUnusedSetPoint.lateralSetPointAngle = 2.6f; // would drive branches down
+    withUnusedSetPoint.lateralSetPointStrength = 0.0f;
+
+    const Plant reference = grownPlant(26, 12, plain);
+    const Plant unchanged = grownPlant(26, 12, withUnusedSetPoint);
+    REQUIRE(reference.graph.internodeCount() == unchanged.graph.internodeCount());
+    for (Index i = 0; i < static_cast<Index>(reference.graph.internodeCount()); ++i) {
+        CHECK(reference.graph.internode(i).direction.z ==
+              doctest::Approx(unchanged.graph.internode(i).direction.z));
+    }
 }
 
 TEST_CASE("phototropism bends growth toward the light direction") {

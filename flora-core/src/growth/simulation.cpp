@@ -76,6 +76,21 @@ float hydraulicExtension(const GrowthParameters& parameters, float pathLength) {
     return std::max(0.0f, 1.0f - std::pow(reach, parameters.hydraulicFalloff));
 }
 
+// Restoring pull toward the gravitropic set-point angle: the target heading is
+// the current heading's own azimuth raised (or lowered) to setPointAngle from
+// vertical, so a branch keeps its compass bearing and corrects only its
+// inclination. A shoot pointing straight up or down has no azimuth to hold and
+// gets no correction that step.
+Vec3 setPointPull(const Vec3& direction, float setPointAngle, float strength) {
+    const Vec3 horizontal = direction - kUpAxis * direction.dot(kUpAxis);
+    const Vec3 azimuth = horizontal.normalizedOr(Vec3{});
+    if (azimuth.lengthSquared() <= 0.0f) {
+        return Vec3{};
+    }
+    const Vec3 target = azimuth * std::sin(setPointAngle) + kUpAxis * std::cos(setPointAngle);
+    return (target - direction) * strength;
+}
+
 // Below this the remaining extension is not worth a metamer: the bud goes
 // dormant instead of producing degenerate near-zero-length internodes.
 constexpr float kMinExtensionFactor = 0.02f;
@@ -108,6 +123,7 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
     const bool orthotropic = bearingOrder == 0 && !startsLateralAxis;
     const float gravitropism =
         orthotropic ? parameters.gravitropism : parameters.lateralGravitropism;
+    const bool holdsSetPoint = !orthotropic && parameters.lateralSetPointStrength > 0.0f;
     const float phototropism =
         orthotropic ? parameters.phototropism : parameters.lateralPhototropism;
     const std::uint16_t axisOrder =
@@ -118,8 +134,11 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
         // Orientation: previous heading plus tropism pulls plus a random
         // gnarl offset, renormalized. Draw order per metamer: gnarl first,
         // then one branch-angle jitter per whorl bud.
-        const Vec3 steered = direction + kUpAxis * gravitropism +
-                             lightDirection * phototropism +
+        const Vec3 gravityPull =
+            holdsSetPoint ? setPointPull(direction, parameters.lateralSetPointAngle,
+                                         parameters.lateralSetPointStrength)
+                          : kUpAxis * gravitropism;
+        const Vec3 steered = direction + gravityPull + lightDirection * phototropism +
                              randomUnitVector(stream) * parameters.gnarl;
         direction = steered.normalizedOr(direction);
 

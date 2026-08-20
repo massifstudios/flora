@@ -119,12 +119,21 @@ productive tip stays slender instead of thickening into a second trunk.
 
 Shedding runs before allocation so no resource is wasted on doomed branches.
 
-Tree form comes from four mechanisms that separate a leader from its branches;
+Tree form comes from five mechanisms that separate a leader from its branches;
 without them a plant grows as a coppiced clump of equal stems:
 
 - **Organ-specific tropisms** — the leader is orthotropic (`gravitropism`,
   `phototropism`), branches are plagiotropic (`lateralGravitropism`,
   `lateralPhototropism`). One shared value turns every branch into a trunk.
+- **Gravitropic set-point angle** — a branch shoot steers toward
+  `lateralSetPointAngle` from vertical, keeping its azimuth and correcting only
+  its inclination (Digby & Firn 1995; classified APPROXIMATE — the visible
+  effect is the angle a limb holds, not the auxin transport that holds it).
+  `lateralSetPointStrength` 0 falls back to a plain ±Z pull. The set point is
+  what makes branch orientation *restoring*: gnarl and stacked branch angles
+  are a random walk over inclination, and a plain pull does not correct it, so
+  deep branch orders end up pointing in arbitrary directions with half of them
+  at the ground.
 - **Apical control by order** — each branch order extends `branchVigorFalloff`
   of the order above it, permanently.
 - **Apical dominance** — lateral buds within `apicalDominanceRange` of an
@@ -162,7 +171,8 @@ tropisms alone never respond to load.
 
 ```text
 FULL         raycast per-bud light            hero trees only
-APPROXIMATE  voxel shadow propagation light   structural trees; bending; phyllotaxis
+APPROXIMATE  voxel shadow propagation light   structural trees; bending; phyllotaxis;
+                                             gravitropic set-point angle
 APPROXIMATE  crown-competition index light    statistical individuals
 BAKE         archetype meshes + impostors     forest rendering
 OMIT         roots (until roadmap), per-leaf physiology, molecular detail
