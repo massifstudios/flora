@@ -45,7 +45,9 @@ TEST_CASE("single axis produces the expected vertex and triangle counts") {
     const StemGraph graph = singleAxis(4, 0.2f);
     BranchMeshParameters parameters;
     parameters.radialSegments = 8;
-    parameters.decimationRadiusMax = 0.1f; // stem is above it: full segments
+    // Resolution is per ring, so an axis only comes out uniform when every
+    // ring clears the band -- including the narrowed tip ring at tipTaper.
+    parameters.decimationRadiusMax = 0.04f;
     Mesh mesh;
     generateBranchMesh(graph, parameters, mesh);
 
@@ -113,10 +115,66 @@ TEST_CASE("thin axes are decimated to fewer radial segments") {
     Mesh thin;
     generateBranchMesh(singleAxis(3, 0.01f), parameters, thin);
 
-    // Same ring count, fewer vertices per ring on the thin axis.
+    // Same ring count, fewer vertices per ring on the thin axis. The thin axis
+    // sits under the band along its whole length, tapered tip included, so its
+    // count is exact; the thick one narrows into the band at the tip.
     CHECK(thin.vertexCount() < thick.vertexCount());
     CHECK(thin.vertexCount() == 4 * (3 + 1) + 1); // minimum segments
-    CHECK(thick.vertexCount() == 4 * (12 + 1) + 1);
+    CHECK(thick.vertexCount() > 4 * (3 + 1) + 1);
+}
+
+TEST_CASE("radial resolution follows the ring, not the axis base") {
+    // A bole that keeps its base resolution to the tip spends its budget where
+    // nothing can see it. tipTaper narrows the last ring, so with per-ring
+    // resolution that ring must also lose segments.
+    BranchMeshParameters uniform;
+    uniform.radialSegments = 12;
+    uniform.minimumRadialSegments = 3;
+    uniform.decimationRadiusMin = 0.02f;
+    uniform.decimationRadiusMax = 0.2f;
+    uniform.tipTaper = 1.0f; // no narrowing: every ring is the same girth
+    BranchMeshParameters tapered = uniform;
+    tapered.tipTaper = 0.1f;
+
+    Mesh flat;
+    Mesh narrowed;
+    generateBranchMesh(singleAxis(3, 0.2f), uniform, flat);
+    generateBranchMesh(singleAxis(3, 0.2f), tapered, narrowed);
+
+    CHECK(narrowed.vertexCount() < flat.vertexCount());
+    // The zipper has to close a ring of 12 against one of 3 and still leave a
+    // watertight, correctly wound surface.
+    std::string errors;
+    CHECK_MESSAGE(validateMesh(narrowed, &errors), errors);
+}
+
+TEST_CASE("boughs take their own radial band, not the trunk's") {
+    // A bough is thinner than the bole and read at silhouette scale. Sharing
+    // one band leaves it pinned at the trunk's minimum whatever it costs.
+    StemGraph graph;
+    const Index root = graph.addRoot(kUpAxis, 1.0f, 0.05f, 0);
+    graph.addInternode(root, AxisRelation::Lateral, Vec3{1, 0, 0}, 0.6f, 0.05f, 1);
+
+    BranchMeshParameters coarse;
+    coarse.radialSegments = 10;
+    coarse.minimumRadialSegments = 4;
+    coarse.branchRadialSegments = 4;
+    coarse.minimumBranchRadialSegments = 3;
+    coarse.decimationRadiusMin = 0.001f;
+    coarse.decimationRadiusMax = 0.05f;
+    coarse.branchDecimationRadiusMax = 0.05f;
+    BranchMeshParameters fine = coarse;
+    fine.branchRadialSegments = 10;
+
+    Mesh lean;
+    Mesh full;
+    generateBranchMesh(graph, coarse, lean);
+    generateBranchMesh(graph, fine, full);
+
+    // Only the bough band moved, so the trunk contributes the same either way.
+    CHECK(lean.vertexCount() < full.vertexCount());
+    std::string errors;
+    CHECK_MESSAGE(validateMesh(lean, &errors), errors);
 }
 
 TEST_CASE("pruned subtrees produce no geometry") {

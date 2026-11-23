@@ -8,6 +8,7 @@ add_executable(flora-tests
     test_growth.cpp
     test_hydraulics.cpp
     test_light.cpp
+    test_lod.cpp
     test_rng.cpp
     test_stem_graph.cpp
     test_tropism_shedding.cpp)

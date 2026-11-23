@@ -12,7 +12,7 @@ namespace {
 
 using Json = nlohmann::ordered_json;
 
-constexpr std::uint32_t kMaterialSchemaVersion = 1;
+constexpr std::uint32_t kMaterialSchemaVersion = 3;
 
 bool fail(std::string* error, const std::string& message) {
     if (error != nullptr) {
@@ -50,7 +50,114 @@ bool parseMapKey(const std::string& key, const Json& value, TextureMaps& maps, b
     if (key == "roughness") {
         return parseString(value, "roughness", maps.roughness, error);
     }
+    if (key == "depth") {
+        return parseString(value, "depth", maps.depth, error);
+    }
     consumed = false;
+    return true;
+}
+
+bool parseUnsigned(const Json& value, const char* key, std::uint32_t& target, std::string* error) {
+    if (!value.is_number_unsigned()) {
+        return fail(error, std::string("'") + key + "' must be a non-negative integer");
+    }
+    target = value.get<std::uint32_t>();
+    return true;
+}
+
+bool parseFoliageVariant(const Json& value, FoliageVariant& variant, std::string* error) {
+    if (!value.is_object()) {
+        return fail(error, "each entry of 'variants' must be an object");
+    }
+    TwigCardVariant& selector = variant.selector;
+    for (const auto& [key, entry] : value.items()) {
+        bool consumed = false;
+        if (!parseMapKey(key, entry, variant.maps, consumed, error)) {
+            return false;
+        }
+        if (consumed) {
+            continue;
+        }
+        bool ok = true;
+        if (key == "minDensity") {
+            ok = parseNumber(entry, "minDensity", selector.minFoliageDensity, error);
+        } else if (key == "maxDensity") {
+            ok = parseNumber(entry, "maxDensity", selector.maxFoliageDensity, error);
+        } else if (key == "minClusters") {
+            ok = parseUnsigned(entry, "minClusters", selector.minClusters, error);
+        } else if (key == "maxClusters") {
+            ok = parseUnsigned(entry, "maxClusters", selector.maxClusters, error);
+        } else if (key == "minCrownDepth") {
+            ok = parseNumber(entry, "minCrownDepth", selector.minCrownDepth, error);
+        } else if (key == "maxCrownDepth") {
+            ok = parseNumber(entry, "maxCrownDepth", selector.maxCrownDepth, error);
+        } else if (key == "minBranchFraction") {
+            ok = parseNumber(entry, "minBranchFraction", selector.minBranchFraction, error);
+        } else if (key == "maxBranchFraction") {
+            ok = parseNumber(entry, "maxBranchFraction", selector.maxBranchFraction, error);
+        } else if (key == "weight") {
+            ok = parseNumber(entry, "weight", selector.weight, error);
+        } else {
+            return fail(error, "unknown key '" + key + "' in 'variants'");
+        }
+        if (!ok) {
+            return false;
+        }
+    }
+    if (variant.maps.color.empty()) {
+        return fail(error, "each entry of 'variants' needs a 'color'");
+    }
+    if (selector.minFoliageDensity > selector.maxFoliageDensity ||
+        selector.minClusters > selector.maxClusters ||
+        selector.minCrownDepth > selector.maxCrownDepth ||
+        selector.minBranchFraction > selector.maxBranchFraction) {
+        return fail(error, "variant '" + variant.maps.color + "' has an empty condition range");
+    }
+    if (selector.weight < 0.0f) {
+        return fail(error, "variant 'weight' must not be negative");
+    }
+    return true;
+}
+
+bool parseFoliageBlock(const Json& value, MaterialSet& result, std::string* error) {
+    for (const auto& [key, entry] : value.items()) {
+        bool ok = true;
+        if (key == "aspect") {
+            ok = parseNumber(entry, "aspect", result.foliageAspect, error);
+        } else if (key == "pivotU") {
+            ok = parseNumber(entry, "pivotU", result.foliagePivotU, error);
+        } else if (key == "alphaCutoff") {
+            ok = parseNumber(entry, "alphaCutoff", result.foliageAlphaCutoff, error);
+        } else if (key == "sizeScale") {
+            ok = parseNumber(entry, "sizeScale", result.foliageSizeScale, error);
+        } else if (key == "minHeight") {
+            ok = parseNumber(entry, "minHeight", result.foliageMinHeight, error);
+        } else if (key == "maxLength") {
+            ok = parseNumber(entry, "maxLength", result.foliageMaxLength, error);
+        } else if (key == "instances") {
+            ok = parseUnsigned(entry, "instances", result.foliageInstances, error);
+        } else if (key == "instanceSpread") {
+            ok = parseNumber(entry, "instanceSpread", result.foliageInstanceSpread, error);
+        } else if (key == "instanceScaleJitter") {
+            ok = parseNumber(entry, "instanceScaleJitter", result.foliageInstanceScaleJitter, error);
+        } else if (key == "variants") {
+            if (!entry.is_array() || entry.empty()) {
+                return fail(error, "'variants' must be a non-empty array");
+            }
+            for (const Json& item : entry) {
+                FoliageVariant variant;
+                if (!parseFoliageVariant(item, variant, error)) {
+                    return false;
+                }
+                result.foliage.push_back(std::move(variant));
+            }
+        } else {
+            return fail(error, "unknown key '" + key + "' in 'foliage'");
+        }
+        if (!ok) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -127,55 +234,66 @@ bool loadMaterialSetFromJson(const std::string& jsonText, MaterialSet& materials
                 return fail(error, "'format' must be \"flora-materials\"");
             }
         } else if (key == "version") {
-            if (!value.is_number_unsigned() || value.get<std::uint32_t>() == 0 ||
-                value.get<std::uint32_t>() > kMaterialSchemaVersion) {
-                return fail(error, "unsupported material schema version");
+            // Development reset: exactly the current version, so a stale file
+            // fails loudly instead of being read under the wrong meaning.
+            if (!value.is_number_unsigned() ||
+                value.get<std::uint32_t>() != kMaterialSchemaVersion) {
+                return fail(error, "material schema version must be " +
+                                       std::to_string(kMaterialSchemaVersion));
             }
         } else if (key == "name") {
             if (!parseString(value, "name", result.name, error)) {
                 return false;
             }
-        } else if (key == "bark" || key == "foliage") {
+        } else if (key == "bark") {
             if (!value.is_object()) {
-                return fail(error, "'" + key + "' must be an object");
+                return fail(error, "'bark' must be an object");
             }
-            const bool isBark = key == "bark";
-            TextureMaps& maps = isBark ? result.bark : result.foliage;
             for (const auto& [mapKey, mapValue] : value.items()) {
                 bool consumed = false;
-                if (!parseMapKey(mapKey, mapValue, maps, consumed, error)) {
+                if (!parseMapKey(mapKey, mapValue, result.bark, consumed, error)) {
                     return false;
                 }
                 if (consumed) {
                     continue;
                 }
-                if (isBark && mapKey == "uvLengthScale") {
-                    if (!parseNumber(mapValue, "uvLengthScale", result.barkUvLengthScale, error)) {
-                        return false;
-                    }
-                } else if (!isBark && mapKey == "aspect") {
-                    if (!parseNumber(mapValue, "aspect", result.foliageAspect, error)) {
-                        return false;
-                    }
-                } else if (!isBark && mapKey == "pivotU") {
-                    if (!parseNumber(mapValue, "pivotU", result.foliagePivotU, error)) {
-                        return false;
-                    }
-                } else if (!isBark && mapKey == "alphaCutoff") {
-                    if (!parseNumber(mapValue, "alphaCutoff", result.foliageAlphaCutoff, error)) {
-                        return false;
-                    }
-                } else {
-                    return fail(error, "unknown key '" + mapKey + "' in '" + key + "'");
+                if (mapKey != "uvLengthScale") {
+                    return fail(error, "unknown key '" + mapKey + "' in 'bark'");
                 }
+                if (!parseNumber(mapValue, "uvLengthScale", result.barkUvLengthScale, error)) {
+                    return false;
+                }
+            }
+        } else if (key == "foliage") {
+            if (!value.is_object()) {
+                return fail(error, "'foliage' must be an object");
+            }
+            if (!parseFoliageBlock(value, result, error)) {
+                return false;
             }
         } else {
             return fail(error, "unknown key '" + key + "'");
         }
     }
 
+    if (result.foliage.empty()) {
+        return fail(error, "'foliage' needs a 'variants' list");
+    }
     if (result.foliageAspect <= 0.0f || result.barkUvLengthScale <= 0.0f) {
         return fail(error, "'aspect' and 'uvLengthScale' must be positive");
+    }
+    if (result.foliageSizeScale <= 0.0f || result.foliageMinHeight <= 0.0f ||
+        result.foliageMaxLength < result.foliageMinHeight) {
+        return fail(error, "'sizeScale' and 'minHeight' must be positive and 'maxLength' "
+                           "at least 'minHeight'");
+    }
+    if (result.foliageInstances == 0) {
+        return fail(error, "'instances' must be at least 1");
+    }
+    if (result.foliageInstanceSpread < 0.0f || result.foliageInstanceScaleJitter < 0.0f ||
+        result.foliageInstanceScaleJitter >= 1.0f) {
+        return fail(error, "'instanceSpread' must not be negative and 'instanceScaleJitter' "
+                           "must be in [0, 1)");
     }
     materials = std::move(result);
     return true;
@@ -192,12 +310,31 @@ bool loadMaterialSetFromFile(const std::string& path, MaterialSet& materials, st
         return false;
     }
     const std::string directory = directoryOf(path);
-    for (TextureMaps* maps : {&materials.bark, &materials.foliage}) {
-        prefixIfRelative(maps->color, directory);
-        prefixIfRelative(maps->normal, directory);
-        prefixIfRelative(maps->roughness, directory);
+    auto reroot = [&directory](TextureMaps& maps) {
+        prefixIfRelative(maps.color, directory);
+        prefixIfRelative(maps.normal, directory);
+        prefixIfRelative(maps.roughness, directory);
+        prefixIfRelative(maps.depth, directory);
+    };
+    reroot(materials.bark);
+    for (FoliageVariant& variant : materials.foliage) {
+        reroot(variant.maps);
     }
     return true;
+}
+
+std::string foliageMaterialName(const MaterialSet& materials, std::size_t variant) {
+    return materials.foliage.size() <= 1 ? std::string("foliage")
+                                         : "foliage_" + std::to_string(variant);
+}
+
+std::vector<TwigCardVariant> foliageSelectors(const MaterialSet& materials) {
+    std::vector<TwigCardVariant> selectors;
+    selectors.reserve(materials.foliage.size());
+    for (const FoliageVariant& variant : materials.foliage) {
+        selectors.push_back(variant.selector);
+    }
+    return selectors;
 }
 
 std::string materialLibraryText(const MaterialSet& materials, const std::string& texturePathPrefix) {
@@ -209,15 +346,38 @@ std::string materialLibraryText(const MaterialSet& materials, const std::string&
     appendMap(out, "map_Kd", materials.bark.color, texturePathPrefix);
     appendMap(out, "norm", materials.bark.normal, texturePathPrefix);
     appendMap(out, "map_Ns", materials.bark.roughness, texturePathPrefix);
+    appendMap(out, "disp", materials.bark.depth, texturePathPrefix);
 
-    out << "\nnewmtl foliage\n";
-    out << "Kd 0.30 0.42 0.20\nKs 0.03 0.03 0.03\nNs 12\nd 1\nillum 2\n";
-    appendMap(out, "map_Kd", materials.foliage.color, texturePathPrefix);
-    // Alpha from the colour map's own channel; cutoff is a renderer setting.
-    appendMap(out, "map_d", materials.foliage.color, texturePathPrefix);
-    appendMap(out, "norm", materials.foliage.normal, texturePathPrefix);
-    appendMap(out, "map_Ns", materials.foliage.roughness, texturePathPrefix);
+    for (std::size_t i = 0; i < materials.foliage.size(); ++i) {
+        const TextureMaps& maps = materials.foliage[i].maps;
+        out << "\nnewmtl " << foliageMaterialName(materials, i) << '\n';
+        out << "Kd 0.30 0.42 0.20\nKs 0.03 0.03 0.03\nNs 12\nd 1\nillum 2\n";
+        appendMap(out, "map_Kd", maps.color, texturePathPrefix);
+        // Alpha from the colour map's own channel; cutoff is a renderer setting.
+        appendMap(out, "map_d", maps.color, texturePathPrefix);
+        appendMap(out, "norm", maps.normal, texturePathPrefix);
+        appendMap(out, "map_Ns", maps.roughness, texturePathPrefix);
+        appendMap(out, "disp", maps.depth, texturePathPrefix);
+    }
     return out.str();
+}
+
+TwigCardParameters twigCardParameters(const MaterialSet& materials,
+                                      const GrowthParameters& growth, std::uint64_t seed) {
+    TwigCardParameters parameters;
+    parameters.maxBearingRadius = growth.leafMaxBearingRadius;
+    parameters.clusterSpacing = growth.leafClusterSpacing;
+    parameters.aspect = materials.foliageAspect;
+    parameters.pivotU = materials.foliagePivotU;
+    parameters.sizeScale = materials.foliageSizeScale;
+    parameters.minHeight = materials.foliageMinHeight;
+    parameters.maxLength = materials.foliageMaxLength;
+    parameters.instancesPerCard = materials.foliageInstances;
+    parameters.instanceSpread = materials.foliageInstanceSpread;
+    parameters.instanceScaleJitter = materials.foliageInstanceScaleJitter;
+    parameters.variants = foliageSelectors(materials);
+    parameters.seed = seed;
+    return parameters;
 }
 
 } // namespace flora

@@ -94,6 +94,68 @@ TEST_CASE("pruning twice does not double-count") {
     CHECK(graph.deadInternodeCount() == first);
 }
 
+TEST_CASE("breaking a branch to a stub keeps the wood inside the stub length") {
+    StemGraph graph;
+    const Index root = graph.addRoot(kUpAxis, 1.0f, 0.1f, 0);
+    const Index branch =
+        graph.addInternode(root, AxisRelation::Lateral, Vec3{1, 0, 0}, 0.5f, 0.02f, 1);
+    const Index second =
+        graph.addInternode(branch, AxisRelation::Continuation, Vec3{1, 0, 0}, 0.5f, 0.02f, 2);
+    const Index third =
+        graph.addInternode(second, AxisRelation::Continuation, Vec3{1, 0, 0}, 0.5f, 0.02f, 3);
+    // A branchlet on the retained wood: a snag is bare, so it must not survive.
+    const Index twig =
+        graph.addInternode(branch, AxisRelation::Lateral, Vec3{0, 1, 0}, 0.3f, 0.01f, 3);
+
+    CHECK(graph.breakToStub(branch, 0.7f, 5) == 4);
+    CHECK(graph.internode(branch).stub);
+    CHECK(graph.internode(second).stub);
+    CHECK_FALSE(graph.internode(third).stub);
+    CHECK_FALSE(graph.internode(twig).stub);
+    // Truncated to end exactly at the stub length, not at an internode boundary.
+    CHECK(graph.internode(branch).length == doctest::Approx(0.5f));
+    CHECK(graph.internode(second).length == doctest::Approx(0.2f));
+    // The snag is dead in every other sense.
+    CHECK_FALSE(graph.internode(branch).alive);
+    graph.sweepDeadBuds();
+
+    std::string errors;
+    CHECK_MESSAGE(graph.validate(&errors), errors);
+}
+
+TEST_CASE("stubs outlast decay while the rest of the dead branch goes") {
+    StemGraph graph;
+    const Index root = graph.addRoot(kUpAxis, 1.0f, 0.1f, 0);
+    const Index branch =
+        graph.addInternode(root, AxisRelation::Lateral, Vec3{1, 0, 0}, 0.5f, 0.02f, 1);
+    graph.addInternode(branch, AxisRelation::Continuation, Vec3{1, 0, 0}, 0.5f, 0.02f, 2);
+
+    graph.breakToStub(branch, 0.3f, 5);
+    graph.sweepDeadBuds();
+    graph.removeDecayed(20, 4); // long past the decay delay
+
+    REQUIRE(graph.internodeCount() == 2); // root plus the snag
+    CHECK(graph.internode(1).stub);
+    CHECK_FALSE(graph.internode(1).alive);
+
+    std::string errors;
+    CHECK_MESSAGE(graph.validate(&errors), errors);
+}
+
+TEST_CASE("a zero stub length prunes the whole branch") {
+    StemGraph graph;
+    const Index root = graph.addRoot(kUpAxis, 1.0f, 0.1f, 0);
+    const Index branch =
+        graph.addInternode(root, AxisRelation::Lateral, Vec3{1, 0, 0}, 0.5f, 0.02f, 1);
+
+    CHECK(graph.breakToStub(branch, 0.0f, 5) == 1);
+    CHECK_FALSE(graph.internode(branch).stub);
+    CHECK(graph.internode(branch).length == doctest::Approx(0.5f));
+    graph.sweepDeadBuds();
+    graph.removeDecayed(20, 4);
+    CHECK(graph.internodeCount() == 1);
+}
+
 TEST_CASE("compaction removes dead records, preserves order, remaps indices") {
     StemGraph graph = buildSampleTree(10);
     graph.markSubtreeDead(2);

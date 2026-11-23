@@ -1,5 +1,6 @@
 #include "flora/structure/stem_graph.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -90,6 +91,33 @@ std::uint32_t StemGraph::markSubtreeDead(Index internode, std::uint32_t deathSte
     return marked;
 }
 
+std::uint32_t StemGraph::breakToStub(Index internode, float stubLength,
+                                     std::uint32_t deathStep) {
+    const std::uint32_t marked = markSubtreeDead(internode, deathStep);
+
+    // Only the branch's own axis becomes the snag. Laterals hanging off it are
+    // dead but unflagged, so decay strips them and leaves bare wood behind.
+    float retained = 0.0f;
+    Index current = internode;
+    while (current != kInvalidIndex && retained < stubLength) {
+        Internode& node = internodes_[current];
+        node.stub = true;
+        node.length = std::min(node.length, stubLength - retained);
+        retained += node.length;
+
+        Index next = kInvalidIndex;
+        for (Index child = node.firstChild; child != kInvalidIndex;
+             child = internodes_[child].nextSibling) {
+            if (internodes_[child].branchOrder == node.branchOrder) {
+                next = child;
+                break;
+            }
+        }
+        current = next;
+    }
+    return marked;
+}
+
 std::uint32_t StemGraph::sweepDeadBuds() {
     std::uint32_t swept = 0;
     for (Bud& bud : buds_) {
@@ -107,7 +135,7 @@ void StemGraph::compact() {
 
 void StemGraph::removeDecayed(std::uint32_t currentStep, std::uint32_t decayDelaySteps) {
     compactKeeping([&](const Internode& node) {
-        return node.alive || currentStep - node.deathStep < decayDelaySteps;
+        return node.alive || node.stub || currentStep - node.deathStep < decayDelaySteps;
     });
 }
 

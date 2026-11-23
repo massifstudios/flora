@@ -98,11 +98,29 @@ GrowthParameters materializeGrowthParameters(const SpeciesDefinition& species,
     parameters.lateralSetPointStrength =
         species.lateralSetPointStrength.value(stream.normal(0.0f, 1.0f), age);
     parameters.branchAutonomy = species.branchAutonomy.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralSetPointAngleApex =
+        species.lateralSetPointAngleApex.value(stream.normal(0.0f, 1.0f), age);
+    parameters.lateralSetPointAngleBase =
+        species.lateralSetPointAngleBase.value(stream.normal(0.0f, 1.0f), age);
+    parameters.crownApexFraction = species.crownApexFraction.value(stream.normal(0.0f, 1.0f), age);
+    parameters.crownMidFraction = species.crownMidFraction.value(stream.normal(0.0f, 1.0f), age);
+    parameters.setPointReorientRate =
+        species.setPointReorientRate.value(stream.normal(0.0f, 1.0f), age);
+    parameters.secondaryDroopFactor =
+        species.secondaryDroopFactor.value(stream.normal(0.0f, 1.0f), age);
+    parameters.secondaryBranchDensity =
+        species.secondaryBranchDensity.value(stream.normal(0.0f, 1.0f), age);
+    parameters.secondaryOnsetDistance =
+        species.secondaryOnsetDistance.value(stream.normal(0.0f, 1.0f), age);
+    parameters.crownBaseHeightFraction =
+        species.crownBaseHeightFraction.value(stream.normal(0.0f, 1.0f), age);
+    parameters.deadStubLength = species.deadStubLength.value(stream.normal(0.0f, 1.0f), age);
 
     parameters.maxMetamersPerShoot = species.maxMetamersPerShoot;
     parameters.lateralBudsPerMetamer = species.lateralBudsPerMetamer;
     parameters.budDormancyLimit = species.budDormancyLimit;
     parameters.branchDecaySteps = species.branchDecaySteps;
+    parameters.branchEstablishSteps = species.branchEstablishSteps;
     parameters.maxInternodes = species.maxInternodes;
     return parameters;
 }

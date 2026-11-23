@@ -1,0 +1,44 @@
+{
+  "format": "flora-materials",
+  "version": 3,
+  "name": "Spruce",
+  "bark": {
+    "color": "../textures/spruce-bark-color.png",
+    "uvLengthScale": 1.2
+  },
+  "foliage": {
+    "aspect": 1,
+    "pivotU": 0.5,
+    "alphaCutoff": 0.5,
+    "sizeScale": 1.6,
+    "minHeight": 0.35,
+    "maxLength": 0.85,
+    "instances": 3,
+    "instanceSpread": 0.55,
+    "instanceScaleJitter": 0.3,
+    "variants": [
+      {
+        "color": "../textures/spruce-foliage-color-1.png",
+        "depth": "../textures/spruce-foliage-depth-1.png",
+        "minDensity": 0.85,
+        "maxDensity": 1.6
+      },
+      {
+        "color": "../textures/spruce-foliage-color-2.png",
+        "depth": "../textures/spruce-foliage-depth-2.png",
+        "minDensity": 1.4
+      },
+      {
+        "color": "../textures/spruce-foliage-color-3.png",
+        "depth": "../textures/spruce-foliage-depth-3.png",
+        "maxDensity": 0.95
+      },
+      {
+        "color": "../textures/spruce-foliage-color-4.png",
+        "maxBranchFraction": 0.3,
+        "maxDensity": 0.9,
+        "minCrownDepth": 0.35
+      }
+    ]
+  }
+}

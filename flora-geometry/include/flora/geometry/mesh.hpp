@@ -28,6 +28,15 @@ struct Mesh {
     }
 };
 
+// A contiguous index run drawn with one material. Kept beside the mesh rather
+// than inside it: a section list is meaningful only to a generator that emits
+// more than one material, and Mesh stays a plain triangle list.
+struct MeshSection {
+    std::uint32_t material = 0;
+    std::uint32_t firstIndex = 0;
+    std::uint32_t indexCount = 0;
+};
+
 // Checks finiteness, array-size agreement, unit normals, index validity, and
 // triangle-list alignment. Appends violation descriptions to errors when given.
 bool validateMesh(const Mesh& mesh, std::string* errors = nullptr);

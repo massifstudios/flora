@@ -42,6 +42,10 @@ struct Internode {
     std::uint32_t deathStep = 0; // step markSubtreeDead ran; meaningful when !alive
     std::uint16_t branchOrder = 0;
     bool alive = true;
+    // Retained deadwood: the broken base of a self-pruned branch. Dead in every
+    // simulation sense (no production, no thickening, no leaves), but exempt
+    // from decay so it stays on the bole as a snag.
+    bool stub = false;
 };
 
 struct Bud {
@@ -76,6 +80,13 @@ public:
     // instead of one per prune).
     std::uint32_t markSubtreeDead(Index internode, std::uint32_t deathStep = 0);
 
+    // Prunes a branch to a snag: the whole subtree is marked dead as above, and
+    // the wood within stubLength of the branch's attachment is flagged stub, so
+    // decay leaves it standing. The last retained internode is truncated to end
+    // exactly at stubLength; a branch shorter than that keeps its own length.
+    // stubLength <= 0 is plain markSubtreeDead. Returns internodes newly marked.
+    std::uint32_t breakToStub(Index internode, float stubLength, std::uint32_t deathStep = 0);
+
     // Marks buds attached to dead internodes dead. Returns the number swept.
     // Required before validate() after pruning.
     std::uint32_t sweepDeadBuds();
@@ -86,7 +97,7 @@ public:
 
     // Like compact(), but keeps deadwood younger than decayDelaySteps
     // (currentStep - deathStep < decayDelaySteps), so shed branches linger as
-    // structure before disappearing.
+    // structure before disappearing. Stubs are kept regardless of age.
     void removeDecayed(std::uint32_t currentStep, std::uint32_t decayDelaySteps);
 
     std::uint32_t deadInternodeCount() const { return deadInternodes_; }

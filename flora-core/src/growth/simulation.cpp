@@ -72,6 +72,151 @@ Vec3 setPointPull(const Vec3& direction, float setPointAngle, float strength) {
     return (target - direction) * strength;
 }
 
+// Vertical extent of the live crown for one step: the set-point gradient is
+// expressed in relative crown depth, so a branch sinks through the gradient as
+// the leader grows above it without any per-branch state.
+struct CrownFrame {
+    float topHeight = 0.0f;
+    float depth = 0.0f; // top to lowest live branch attachment; 0 when no branches yet
+};
+
+// Relative crown depth of a height: 0 at the leader tip, 1 at the crown base.
+float crownDepthOf(const CrownFrame& crown, float height) {
+    if (crown.depth <= 0.0f) {
+        return 0.0f;
+    }
+    return std::clamp((crown.topHeight - height) / crown.depth, 0.0f, 1.0f);
+}
+
+// Gravitropic set-point angle along the crown (Picea-style angular gradient):
+// an acute plateau over the apex zone, a horizontal plateau over the mid
+// canopy, and a droop ramp to the crown base. The apex-to-horizontal ramp
+// occupies the first half of the mid zone so the profile stays continuous —
+// a real crown has no angular discontinuity between whorls.
+float setPointAngleAt(const GrowthParameters& parameters, float crownDepth) {
+    const float apexEnd = std::clamp(parameters.crownApexFraction, 0.0f, 1.0f);
+    const float midEnd = std::clamp(parameters.crownMidFraction, apexEnd, 1.0f);
+    const float midAngle = parameters.lateralSetPointAngle;
+    const float apexAngle = parameters.lateralSetPointAngleApex < 0.0f
+                                ? midAngle
+                                : parameters.lateralSetPointAngleApex;
+    const float baseAngle = parameters.lateralSetPointAngleBase < 0.0f
+                                ? midAngle
+                                : parameters.lateralSetPointAngleBase;
+
+    if (crownDepth <= apexEnd) {
+        return apexAngle;
+    }
+    const float rampEnd = apexEnd + 0.5f * (midEnd - apexEnd);
+    if (crownDepth < rampEnd) {
+        const float t = (crownDepth - apexEnd) / (rampEnd - apexEnd);
+        return apexAngle + (midAngle - apexAngle) * t;
+    }
+    if (crownDepth <= midEnd || midEnd >= 1.0f) {
+        return midAngle;
+    }
+    const float t = (crownDepth - midEnd) / (1.0f - midEnd);
+    return midAngle + (baseAngle - midAngle) * t;
+}
+
+// True when the species actually grades the set point along the crown, rather
+// than holding one angle everywhere.
+bool crownGradientActive(const GrowthParameters& parameters) {
+    return parameters.lateralSetPointStrength > 0.0f &&
+           (parameters.lateralSetPointAngleApex >= 0.0f ||
+            parameters.lateralSetPointAngleBase >= 0.0f);
+}
+
+bool pendulousSecondaries(const GrowthParameters& parameters) {
+    return parameters.lateralSetPointStrength > 0.0f && parameters.secondaryDroopFactor > 0.0f;
+}
+
+// A branchlet is not a small bough. Axes of order 2 and up leave the crown set
+// point and hang: their target is blended from the zone angle of the crown
+// position they hang in toward straight down, so the curtain under a drooping
+// lower bough hangs harder than the one under a horizontal mid-canopy bough
+// without a second gradient to tune.
+float pendulousAngleFrom(const GrowthParameters& parameters, float zoneAngle) {
+    const float droop = std::clamp(parameters.secondaryDroopFactor, 0.0f, 1.0f);
+    return zoneAngle + (kPi - zoneAngle) * droop;
+}
+
+// Set-point angle an axis of this order holds at this crown depth.
+float setPointFor(const GrowthParameters& parameters, std::uint16_t axisOrder, float crownDepth) {
+    const float zoneAngle = setPointAngleAt(parameters, crownDepth);
+    return axisOrder >= 2 && pendulousSecondaries(parameters)
+               ? pendulousAngleFrom(parameters, zoneAngle)
+               : zoneAngle;
+}
+
+// Heading at a given inclination from vertical, keeping the compass bearing the
+// phyllotactic roll produced. Ordinary lateral placement tilts away from the
+// bearing axis, which cannot express an angle measured from vertical once that
+// axis is itself horizontal or drooping — a 140 deg tilt off a horizontal bough
+// points back along the bough, not at the ground.
+Vec3 directionAtInclination(const Vec3& heading, const Vec3& fallbackHeading,
+                            float angleFromVertical) {
+    Vec3 azimuth = (heading - kUpAxis * heading.dot(kUpAxis)).normalizedOr(Vec3{});
+    if (azimuth.lengthSquared() <= 0.0f) {
+        azimuth =
+            (fallbackHeading - kUpAxis * fallbackHeading.dot(kUpAxis)).normalizedOr(Vec3{});
+    }
+    if (azimuth.lengthSquared() <= 0.0f) {
+        return heading;
+    }
+    return azimuth * std::sin(angleFromVertical) + kUpAxis * std::cos(angleFromVertical);
+}
+
+// What a prune leaves behind. A dead primary bough on the bare bole breaks off
+// short and the snag stays: there is no growth around it to swallow it and no
+// crown above it that ever needs the space. Higher up, and for anything finer
+// than a primary bough, the wood goes entirely. What killed the branch does not
+// matter, so every prune site asks this instead of inventing its own rule.
+struct SnagRule {
+    float stubLength = 0.0f;      // meters retained, 0 removes the branch outright
+    float clearanceHeight = 0.0f; // bole below this keeps its snags
+};
+
+std::uint32_t prune(StemGraph& graph, Index internode, const SnagRule& snags,
+                    const std::vector<Vec3>& tipPositions, std::uint32_t step) {
+    const Internode& node = graph.internode(internode);
+    const bool primaryBough = node.branchOrder == 1 && node.parent != kInvalidIndex &&
+                              graph.internode(node.parent).branchOrder == 0;
+    const bool onBareBole =
+        primaryBough && tipPositions[node.parent].z < snags.clearanceHeight;
+    return graph.breakToStub(internode, onBareBole ? snags.stubLength : 0.0f, step);
+}
+
+// Where a branch axis leaves its bearing axis, and how far along the axis the
+// queried internode sits from there. The gradient is keyed to the origin, not
+// to the moving tip: keying it to the tip would let a drooping branch report a
+// deeper crown position each step, droop harder, and run away. Walks rootward
+// to the first internode whose parent is of lower branch order; O(axis length),
+// once per shoot.
+struct AxisOrigin {
+    float height = 0.0f;   // height of the bearing point
+    float distance = 0.0f; // axis path from the bearing point to the queried tip
+};
+
+AxisOrigin axisOriginOf(const StemGraph& graph, const std::vector<Vec3>& tipPositions,
+                        Index attachment) {
+    AxisOrigin origin;
+    Index node = attachment;
+    while (true) {
+        const Internode& current = graph.internode(node);
+        origin.distance += current.length;
+        if (current.parent == kInvalidIndex) {
+            return origin;
+        }
+        if (graph.internode(current.parent).branchOrder != current.branchOrder) {
+            origin.height =
+                current.parent < tipPositions.size() ? tipPositions[current.parent].z : 0.0f;
+            return origin;
+        }
+        node = current.parent;
+    }
+}
+
 // Below this the remaining extension is not worth a metamer: the bud goes
 // dormant instead of producing degenerate near-zero-length internodes.
 constexpr float kMinExtensionFactor = 0.02f;
@@ -87,8 +232,8 @@ constexpr float kMaxBendPerStep = 0.25f; // radians
 // stem path. Works on indices only: addInternode and addBud may reallocate the
 // underlying arrays.
 void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lightDirection,
-               Index budIndex, std::uint32_t metamerCount, float pathLength,
-               std::uint32_t step) {
+               Index budIndex, std::uint32_t metamerCount, float pathLength, std::uint32_t step,
+               const CrownFrame& crown, const std::vector<Vec3>& tipPositions) {
     StemGraph& graph = plant.graph;
 
     const Bud budBefore = graph.bud(budIndex);
@@ -111,14 +256,51 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
         static_cast<std::uint16_t>(bearingOrder + (startsLateralAxis ? 1 : 0));
     const float orderVigor = std::pow(parameters.branchVigorFalloff, static_cast<float>(axisOrder));
 
+    // Whorl position in the crown, fixed for this shoot: the angle a branch
+    // holds is set by where it left the leader, not by where its tip has
+    // wandered to. The axis path from that bearing point gates where the
+    // branchlet curtain starts.
+    const bool bearsSecondaries = axisOrder >= 1;
+    const bool gatesOnset = bearsSecondaries && parameters.secondaryOnsetDistance > 0.0f;
+    // A shoot that starts a lateral axis *is* the origin: the walk below would
+    // report the bearing axis's own origin and path instead, which on a first
+    // year bough means the whole trunk.
+    const AxisOrigin origin =
+        startsLateralAxis
+            ? AxisOrigin{attachment < tipPositions.size() ? tipPositions[attachment].z : 0.0f, 0.0f}
+        : holdsSetPoint || gatesOnset ? axisOriginOf(graph, tipPositions, attachment)
+                                      : AxisOrigin{};
+    const float setPointAngle =
+        holdsSetPoint ? setPointFor(parameters, axisOrder, crownDepthOf(crown, origin.height))
+                      : 0.0f;
+    float axisDistance = origin.distance;
+    const bool pendulousBuds = bearsSecondaries && pendulousSecondaries(parameters);
+    const float budDensity =
+        bearsSecondaries ? std::clamp(parameters.secondaryBranchDensity, 0.0f, 1.0f) : 1.0f;
+
+    // Whorl buds emerge at the set point of the height they are laid down at,
+    // so a new tier leaves the leader acute and only later tiers emerge
+    // flatter. Tracked as the shoot extends: new internodes have no position
+    // in tipPositions yet.
+    const bool gradedEmergence = crownGradientActive(parameters);
+    float shootHeight = budBefore.internode < tipPositions.size()
+                            ? tipPositions[budBefore.internode].z
+                            : 0.0f;
+
     for (std::uint32_t metamer = 0; metamer < metamerCount; ++metamer) {
         // Orientation: previous heading plus tropism pulls plus a random
         // gnarl offset, renormalized. Draw order per metamer: gnarl first,
         // then one branch-angle jitter per whorl bud.
+        // A preformed bud opens at the angle it was laid down at: the set point
+        // steers the years after the flush, not the flush itself. Without this
+        // the first metamer is pulled straight to the zone the whorl has since
+        // descended into, and every tier emerges at the same angle however
+        // acute the bud was.
+        const bool preformedFlush = gradedEmergence && startsLateralAxis && metamer == 0;
         const Vec3 gravityPull =
-            holdsSetPoint ? setPointPull(direction, parameters.lateralSetPointAngle,
-                                         parameters.lateralSetPointStrength)
-                          : kUpAxis * gravitropism;
+            holdsSetPoint && !preformedFlush
+                ? setPointPull(direction, setPointAngle, parameters.lateralSetPointStrength)
+                : (holdsSetPoint ? Vec3{} : kUpAxis * gravitropism);
         const Vec3 steered = direction + gravityPull + lightDirection * phototropism +
                              randomUnitVector(stream) * parameters.gnarl;
         direction = steered.normalizedOr(direction);
@@ -135,17 +317,40 @@ void growShoot(Plant& plant, const GrowthParameters& parameters, const Vec3& lig
                                           : AxisRelation::Continuation;
         attachment = graph.addInternode(attachment, relation, direction, length,
                                         parameters.baseGrowthThickness, step);
+        shootHeight += direction.z * length;
+        axisDistance += length;
+
+        const float zoneAngle = setPointAngleAt(parameters, crownDepthOf(crown, shootHeight));
+        const float emergenceAngle = pendulousBuds ? pendulousAngleFrom(parameters, zoneAngle)
+                                     : gradedEmergence ? zoneAngle
+                                                       : parameters.branchAngle;
 
         rollAngle += parameters.phyllotaxisAngle;
         const float whorlSpacing = parameters.lateralBudsPerMetamer > 0
                                        ? kTwoPi / static_cast<float>(parameters.lateralBudsPerMetamer)
                                        : 0.0f;
-        for (std::uint32_t whorl = 0; whorl < parameters.lateralBudsPerMetamer; ++whorl) {
+        // Buds are laid down at the axis tip, so the bare inner length is an
+        // age gate: this year's slots open only once the axis has extended
+        // past it.
+        const std::uint32_t budSlots =
+            axisDistance >= parameters.secondaryOnsetDistance || !gatesOnset
+                ? parameters.lateralBudsPerMetamer
+                : 0;
+        for (std::uint32_t whorl = 0; whorl < budSlots; ++whorl) {
             const float budRoll = rollAngle + whorlSpacing * static_cast<float>(whorl);
-            const float tilt = parameters.branchAngle +
+            if (budDensity < 1.0f && stream.uniformFloat(0.0f, 1.0f) >= budDensity) {
+                continue; // thinned slot: a branchlet curtain is sparser than a whorl
+            }
+            const float tilt = emergenceAngle +
                                stream.uniformFloat(-parameters.branchAngleJitter,
                                                    parameters.branchAngleJitter);
-            const Vec3 budDirection = tiltedDirection(direction, budRoll, tilt);
+            // Radial placement around a bough projects onto the two sides of
+            // it, which is the sub-opposite arrangement a branchlet curtain
+            // hangs from; the inclination is then taken from vertical.
+            const Vec3 budDirection =
+                pendulousBuds ? directionAtInclination(
+                                    tiltedDirection(direction, budRoll, kPi * 0.5f), direction, tilt)
+                              : tiltedDirection(direction, budRoll, tilt);
             const Index lateralBud = graph.addBud(attachment, BudType::Lateral, budDirection, step);
             graph.bud(lateralBud).rollAngle = budRoll;
         }
@@ -215,6 +420,29 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
 
     graph.computeTipPositions(context.tipPositions_);
     const auto& tipPositions = context.tipPositions_;
+
+    // Live crown extent for the set-point gradient: top of the leader down to
+    // the lowest surviving branch attachment, so the gradient tracks the crown
+    // as self-pruning lifts its base rather than the whole stem.
+    CrownFrame crown;
+    {
+        float lowestBranch = 0.0f;
+        bool anyBranch = false;
+        for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+            const Internode& node = graph.internode(i);
+            if (!node.alive) {
+                continue;
+            }
+            crown.topHeight = std::max(crown.topHeight, tipPositions[i].z);
+            if (node.branchOrder == 0) {
+                continue;
+            }
+            const float height = tipPositions[i].z;
+            lowestBranch = anyBranch ? std::min(lowestBranch, height) : height;
+            anyBranch = true;
+        }
+        crown.depth = anyBranch ? std::max(0.0f, crown.topHeight - lowestBranch) : 0.0f;
+    }
 
     // Stem path from the root base to each internode tip: the conduit length
     // water travels to feed a bud sitting there (hydraulic limitation, phase 6).
@@ -377,6 +605,12 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
         }
     }
 
+    // Height of bole that self-pruning keeps bare, shared by every prune below:
+    // it decides both what clearance takes and where a prune leaves a snag.
+    SnagRule snags;
+    snags.stubLength = parameters.deadStubLength;
+    snags.clearanceHeight = parameters.crownBaseHeightFraction * crown.topHeight;
+
     // Phase 3a — drop shaded new growth. A terminal stem is a shoot the tree
     // has not yet committed to: if it sits in the dark it is cut before the
     // cost rule below would ever see it, which is what keeps a crown's
@@ -401,11 +635,52 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 light = std::max(light, budLight[budIndices[slot]]);
             }
             if (light >= 0.0f && light < parameters.dropShadedGrowthLight) {
-                graph.markSubtreeDead(i, step);
+                prune(graph, i, snags, tipPositions, step);
                 anyDropped = true;
             }
         }
         if (anyDropped) {
+            graph.sweepDeadBuds();
+        }
+    }
+
+    // Phase 3a-bis — crown-base clearance. Self-pruning of the lower bole is a
+    // positional process, not a local light balance: the crown base tracks the
+    // rising tree, and the boughs below it go whatever their own exposure says.
+    // Keeping it separate from the shade rule above is what lets a crown be
+    // dense on the inside and still stand on a clean bole. Only whole primary
+    // boughs are cleared, and each leaves a broken snag behind.
+    // One whorl per step, lowest first: a tier dies out over a season, the bole
+    // does not shed a band of itself at once. Clearing everything under the
+    // line the first time the line moves costs a young tree most of its leaf
+    // area in a single step, and it never regains the trajectory; it also
+    // stacks every snag at one height instead of leaving a ladder up the bole.
+    if (snags.clearanceHeight > 0.0f) {
+        Index lowestWhorl = kInvalidIndex; // trunk internode bearing it
+        float lowestHeight = 0.0f;
+        for (Index i = 0; i < static_cast<Index>(internodeCount); ++i) {
+            const Internode& node = graph.internode(i);
+            if (!node.alive || node.branchOrder != 1 || node.parent == kInvalidIndex ||
+                graph.internode(node.parent).branchOrder != 0) {
+                continue; // not a primary bough leaving the trunk
+            }
+            const float attachment = tipPositions[node.parent].z;
+            if (attachment >= snags.clearanceHeight) {
+                continue;
+            }
+            if (lowestWhorl == kInvalidIndex || attachment < lowestHeight) {
+                lowestWhorl = node.parent;
+                lowestHeight = attachment;
+            }
+        }
+        if (lowestWhorl != kInvalidIndex) {
+            for (Index child = graph.internode(lowestWhorl).firstChild; child != kInvalidIndex;
+                 child = graph.internode(child).nextSibling) {
+                const Internode& bough = graph.internode(child);
+                if (bough.alive && bough.branchOrder == 1) {
+                    prune(graph, child, snags, tipPositions, step);
+                }
+            }
             graph.sweepDeadBuds();
         }
     }
@@ -425,6 +700,9 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             if (node.branchOrder != graph.internode(node.parent).branchOrder + 1) {
                 continue; // only whole lateral branches shed, never mid-axis
             }
+            if (step - node.creationStep < parameters.branchEstablishSteps) {
+                continue; // still establishing: too young to have paid for itself
+            }
             const float cost = parameters.maintenanceCostPerVolume * woodVolume[i];
             if (cost > 0.0f && energy[i] < parameters.dropWeakBranchRatio * cost) {
                 candidates.emplace_back(energy[i] / cost, i);
@@ -443,7 +721,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
                 if (!graph.internode(index).alive) {
                     continue; // an ancestor was shed first
                 }
-                budget -= graph.markSubtreeDead(index, step);
+                budget -= prune(graph, index, snags, tipPositions, step);
             }
             graph.sweepDeadBuds();
         }
@@ -647,7 +925,7 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             continue;
         }
         growShoot(plant, parameters, budLightDirection[budIndex], budIndex, metamerCount, budPath,
-                  step);
+                  step, crown, tipPositions);
     }
 
     // Phase 7 — secondary thickening: incremental pipe model. Cross-section
@@ -667,6 +945,41 @@ void growStep(Plant& plant, const GrowthParameters& parameters, const Environmen
             const float area =
                 kPi * node.radius * node.radius + parameters.thicknessGrowthFactor * driver;
             node.radius = std::sqrt(area / kPi);
+        }
+    }
+
+    // Phase 7a — set-point reorientation. Existing branch wood turns toward the
+    // set point of the crown zone it now occupies, so a bough that emerged
+    // acute at the leader flattens as the crown grows past it and droops once
+    // it reaches the crown base. Frozen directions alone can only express an
+    // angle in wood grown after the whorl moved, which leaves a whole tier
+    // stuck at its emergence angle for life.
+    if (parameters.setPointReorientRate > 0.0f &&
+        (crownGradientActive(parameters) || pendulousSecondaries(parameters))) {
+        graph.computeTipPositions(context.tipPositions_);
+        const auto& positions = context.tipPositions_;
+        auto& originHeight = context.axisOriginHeight_;
+        originHeight.assign(graph.internodeCount(), 0.0f);
+        // Root-to-tip: a parent's axis origin is resolved before its children,
+        // so each internode inherits its axis origin in O(1).
+        for (Index i = 0; i < static_cast<Index>(graph.internodeCount()); ++i) {
+            const Internode& node = graph.internode(i);
+            if (node.parent == kInvalidIndex) {
+                continue;
+            }
+            originHeight[i] = graph.internode(node.parent).branchOrder != node.branchOrder
+                                  ? positions[node.parent].z
+                                  : originHeight[node.parent];
+        }
+        for (Index i = 0; i < static_cast<Index>(graph.internodeCount()); ++i) {
+            Internode& node = graph.internode(i);
+            if (!node.alive || node.branchOrder == 0) {
+                continue;
+            }
+            const float target =
+                setPointFor(parameters, node.branchOrder, crownDepthOf(crown, originHeight[i]));
+            const Vec3 pull = setPointPull(node.direction, target, parameters.setPointReorientRate);
+            node.direction = (node.direction + pull).normalizedOr(node.direction);
         }
     }
 

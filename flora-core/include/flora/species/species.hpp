@@ -15,7 +15,7 @@ namespace flora {
 // deterministically materializes the GrowthParameters for that individual at
 // a given age.
 
-inline constexpr std::uint32_t kSpeciesSchemaVersion = 8;
+inline constexpr std::uint32_t kSpeciesSchemaVersion = 11;
 
 // Normal distribution with clamping. stddev 0 collapses to the mean.
 struct Distribution {
@@ -109,12 +109,37 @@ struct SpeciesDefinition {
     // Schema v7: how a branch's claim on the resource is weighted between its
     // own production and its meristem count.
     SpeciesParameter branchAutonomy{{0.5f, 0.0f, 0.0f, 1.0f}, {}};
+    // Schema v9: the set-point angle varies along the crown instead of being
+    // one value per plant. lateralSetPointAngle is the mid-canopy value; these
+    // are the apex and crown-base ends of the gradient, and the two fractions
+    // are relative crown depths (0 at the leader tip, 1 at the crown base)
+    // where the acute and horizontal zones end. The angles default to negative
+    // ("unset": follow lateralSetPointAngle), so a v8 species file keeps its
+    // single-angle behaviour without migration.
+    SpeciesParameter lateralSetPointAngleApex{{-1.0f, 0.0f, -1.0f, 3.1415927f}, {}};
+    SpeciesParameter lateralSetPointAngleBase{{-1.0f, 0.0f, -1.0f, 3.1415927f}, {}};
+    SpeciesParameter crownApexFraction{{0.15f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter crownMidFraction{{0.6f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter setPointReorientRate{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    // Schema v10: pendulous secondary branchlets. Defaults keep the v9
+    // behaviour (branchlets follow the primary set point, every bud slot is
+    // laid down, no bare inner length), so a v9 file needs no migration.
+    SpeciesParameter secondaryDroopFactor{{0.0f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter secondaryBranchDensity{{1.0f, 0.0f, 0.0f, 1.0f}, {}};
+    SpeciesParameter secondaryOnsetDistance{{0.0f, 0.0f, 0.0f, 50.0f}, {}};
+    // Schema v11: height-driven self-pruning of the lower bole, and the snags
+    // it leaves. deadStubLength's distribution bounds are the snag length
+    // range; the draw is per plant and step, so successive cleared bands carry
+    // different stub lengths. 0 on the fraction disables both.
+    SpeciesParameter crownBaseHeightFraction{{0.0f, 0.0f, 0.0f, 0.9f}, {}};
+    SpeciesParameter deadStubLength{{0.0f, 0.0f, 0.0f, 2.0f}, {}};
 
     // Integer parameters (fixed per species).
     std::uint32_t maxMetamersPerShoot = 3;
     std::uint32_t lateralBudsPerMetamer = 1;
     std::uint32_t budDormancyLimit = 3;
     std::uint32_t branchDecaySteps = 4; // 0: deadwood never removed
+    std::uint32_t branchEstablishSteps = 0; // cost-shedding grace for new laterals
     std::uint32_t maxInternodes = 100000;
 
     bool operator==(const SpeciesDefinition&) const = default;

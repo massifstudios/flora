@@ -60,8 +60,48 @@ struct GrowthParameters {
     // restoring, so a limb that sags under load or wanders off in a random
     // walk steers back to its species angle and its tip turns up again.
     // Replaces lateralGravitropism on branch shoots when strength > 0.
-    float lateralSetPointAngle = 1.2217305f;   // 70 deg from +Z
+    float lateralSetPointAngle = 1.2217305f;   // 70 deg from +Z, mid-canopy value
     float lateralSetPointStrength = 0.0f;      // 0 disables (plain ±Z pull)
+    // Set-point gradient along the crown. A whorl leaves the leader acute,
+    // flattens as the crown grows past it, and droops near the crown base:
+    // the set point is a property of the branch's position in the crown, not
+    // of the plant. Evaluated against relative crown depth (0 at the leader
+    // tip, 1 at the crown base) of the branch axis origin, so a branch keeps
+    // sinking through the gradient as the tree grows over it. Negative means
+    // unset: the end follows lateralSetPointAngle and the gradient is flat, so
+    // a species that never mentions the gradient keeps its single-angle
+    // behaviour. When the gradient is active it also sets the angle a lateral
+    // bud emerges at, since frozen internode directions mean a branch can only
+    // express an angle in the wood it grows after adopting it.
+    float lateralSetPointAngleApex = -1.0f;
+    float lateralSetPointAngleBase = -1.0f;
+    float crownApexFraction = 0.15f; // acute zone ends at this crown depth
+    float crownMidFraction = 0.6f;   // horizontal zone ends at this crown depth
+    // Annual reorientation of existing branch wood toward the set point of the
+    // crown zone it now sits in (reaction wood / differential growth). Without
+    // it a bough is frozen at the angle it emerged with and the gradient can
+    // only ever show up in wood grown after the whorl descended, which leaves
+    // the mid canopy stuck at the emergence angle. 0 disables it.
+    float setPointReorientRate = 0.0f;
+    // Pendulous secondary branchlets. A primary bough is plagiotropic and holds
+    // the crown set point; the branchlets it bears are not, they hang. The droop
+    // factor blends the set point of every axis of order 2 and up from its crown
+    // zone angle toward straight down, so a branchlet under a drooping lower
+    // bough hangs harder than one under a horizontal mid-canopy bough without a
+    // second gradient. 0 disables it, and branchlets keep the primary set point.
+    float secondaryDroopFactor = 0.0f;
+    // Fraction of the lateral bud slots on an order-1-and-up shoot that are
+    // actually laid down. lateralBudsPerMetamer sizes the leader's whorl; a
+    // branchlet curtain is sparser than that, and the thinning is what turns a
+    // whorl ring into sub-opposite branchlets. 1 keeps every slot.
+    float secondaryBranchDensity = 1.0f;
+    // Bare inner length: a branchlet bud is only laid down this far out along
+    // its bearing axis. Buds are laid down at the axis tip, so this is an age
+    // gate expressed as length -- it keeps the inner bough bare and, because a
+    // whorl near the apex has not had the years to extend that far, keeps
+    // pendulous growth off the spire without a separate crown-zone rule.
+    // 0 disables it (meters of axis path from the axis origin).
+    float secondaryOnsetDistance = 0.0f;
     float gnarl = 0.06f;         // random per-metamer offset magnitude
 
     // Self-shading (phase 1). shadowIntensity is species biology (foliage
@@ -117,11 +157,30 @@ struct GrowthParameters {
     float maintenanceCostPerVolume = 400.0f; // energy units per m^3 per step
     float sapwoodDepth = 0.05f;              // meters inward from the surface
     float dropWeakBranchRatio = 1.0f;        // 0 disables shedding
+    // Steps a lateral is exempt from cost shedding after it emerges. A shoot
+    // in its first years is a bare axis: the shade rule culls the twigs it has
+    // not yet clothed, which leaves it with no production at all, and the cost
+    // rule then reads that as a branch worth dropping. A tree instead
+    // subsidises establishing shoots from reserves and from the axis that bore
+    // them, so the cost test only means anything once the branch has had the
+    // seasons to build a crown of its own. 0 tests every branch immediately.
+    std::uint32_t branchEstablishSteps = 0;
     // Minimum light for a terminal stem (no live children) to survive. Cost
     // shedding only reaches whole branches that have already grown expensive;
     // this culls the shaded new shoots that would fill a crown's interior
     // before they ever pay for themselves. 0 disables it.
     float dropShadedGrowthLight = 0.0f;
+    // Crown-base clearance: the bottom of the bole is kept bare as a fraction
+    // of current tree height. Shade shedding cannot do this job. Its test is
+    // local, so a value harsh enough to strip the lowest whorls also hollows
+    // out the crown interior, where the same darkness is normal. Real
+    // self-pruning is positional -- the crown base rises as the tree does --
+    // so the rule that clears the bole is a rule about height. 0 disables it.
+    float crownBaseHeightFraction = 0.0f;
+    // Length of branch wood left standing when clearance prunes a bough, so a
+    // cleared bole carries broken snags instead of going abruptly smooth.
+    // 0 removes the whole branch (plain shedding).
+    float deadStubLength = 0.0f; // meters of branch axis from the attachment
     // At most this fraction of the tree sheds per step, worst branches first.
     // Spreads correction over time instead of mass die-offs when maintenance
     // cost catches up with capped energy (stabilizer until M6 light limits

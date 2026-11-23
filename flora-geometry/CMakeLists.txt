@@ -2,6 +2,7 @@ add_library(flora-geometry
     src/branch_mesh.cpp
     src/foliage_cards.cpp
     src/foliage_mesh.cpp
+    src/lod.cpp
     src/material.cpp
     src/mesh.cpp)
 

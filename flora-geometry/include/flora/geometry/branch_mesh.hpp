@@ -18,10 +18,20 @@ enum class RadiusSource : std::uint8_t {
 };
 
 struct BranchMeshParameters {
+    // Radial resolution is chosen per ring from that ring's own radius, so a
+    // bole tapers in segment count as it tapers in girth instead of carrying
+    // its base resolution to the spire. Rings of differing counts are stitched
+    // with a zipper, which costs the same triangles as a matched quad strip.
     std::uint32_t radialSegments = 12;      // ring segments at decimationRadiusMax and above
     std::uint32_t minimumRadialSegments = 3;
     float decimationRadiusMin = 0.015f;     // radius at or below: minimum segments
     float decimationRadiusMax = 0.30f;      // radius at or above: full segments
+    // A bough is a thinner organ than the bole and is read at silhouette scale,
+    // so it gets its own band rather than sitting permanently at the bottom of
+    // the trunk's. Applies to every axis of order 1 and up.
+    std::uint32_t branchRadialSegments = 5;
+    std::uint32_t minimumBranchRadialSegments = 3;
+    float branchDecimationRadiusMax = 0.03f;
     float tipTaper = 0.25f;                 // final ring radius factor at an axis tip
     float uvLengthScale = 1.0f;             // meters of axis length per V repeat
     // Meters of girth per U repeat: bark keeps its real-world scale around a

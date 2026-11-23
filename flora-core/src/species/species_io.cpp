@@ -20,7 +20,7 @@ struct FloatEntry {
     bool isAngle; // degrees in JSON, radians in memory
 };
 
-constexpr std::array<FloatEntry, 37> kFloatEntries = {{
+constexpr std::array<FloatEntry, 47> kFloatEntries = {{
     {"baseGrowthLength", &SpeciesDefinition::baseGrowthLength, false},
     {"baseGrowthThickness", &SpeciesDefinition::baseGrowthThickness, false},
     {"apicalControl", &SpeciesDefinition::apicalControl, false},
@@ -58,6 +58,16 @@ constexpr std::array<FloatEntry, 37> kFloatEntries = {{
     {"lateralSetPointAngle", &SpeciesDefinition::lateralSetPointAngle, true},
     {"lateralSetPointStrength", &SpeciesDefinition::lateralSetPointStrength, false},
     {"branchAutonomy", &SpeciesDefinition::branchAutonomy, false},
+    {"lateralSetPointAngleApex", &SpeciesDefinition::lateralSetPointAngleApex, true},
+    {"lateralSetPointAngleBase", &SpeciesDefinition::lateralSetPointAngleBase, true},
+    {"crownApexFraction", &SpeciesDefinition::crownApexFraction, false},
+    {"crownMidFraction", &SpeciesDefinition::crownMidFraction, false},
+    {"setPointReorientRate", &SpeciesDefinition::setPointReorientRate, false},
+    {"secondaryDroopFactor", &SpeciesDefinition::secondaryDroopFactor, false},
+    {"secondaryBranchDensity", &SpeciesDefinition::secondaryBranchDensity, false},
+    {"secondaryOnsetDistance", &SpeciesDefinition::secondaryOnsetDistance, false},
+    {"crownBaseHeightFraction", &SpeciesDefinition::crownBaseHeightFraction, false},
+    {"deadStubLength", &SpeciesDefinition::deadStubLength, false},
 }};
 
 struct IntegerEntry {
@@ -65,11 +75,12 @@ struct IntegerEntry {
     std::uint32_t SpeciesDefinition::* member;
 };
 
-constexpr std::array<IntegerEntry, 5> kIntegerEntries = {{
+constexpr std::array<IntegerEntry, 6> kIntegerEntries = {{
     {"maxMetamersPerShoot", &SpeciesDefinition::maxMetamersPerShoot},
     {"lateralBudsPerMetamer", &SpeciesDefinition::lateralBudsPerMetamer},
     {"budDormancyLimit", &SpeciesDefinition::budDormancyLimit},
     {"branchDecaySteps", &SpeciesDefinition::branchDecaySteps},
+    {"branchEstablishSteps", &SpeciesDefinition::branchEstablishSteps},
     {"maxInternodes", &SpeciesDefinition::maxInternodes},
 }};
 

@@ -12,17 +12,51 @@ namespace {
 
 constexpr float kTwoPi = 6.2831853f;
 
-std::uint32_t segmentsForRadius(const BranchMeshParameters& parameters, float radius) {
+std::uint32_t segmentsForRadius(const BranchMeshParameters& parameters, float radius,
+                                std::uint16_t branchOrder) {
+    const bool bole = branchOrder == 0;
     const float minimum = parameters.decimationRadiusMin;
-    const float maximum = parameters.decimationRadiusMax;
+    const float maximum =
+        bole ? parameters.decimationRadiusMax : parameters.branchDecimationRadiusMax;
     float blend = 1.0f;
     if (maximum > minimum) {
         blend = std::clamp((radius - minimum) / (maximum - minimum), 0.0f, 1.0f);
     }
-    const float low = static_cast<float>(parameters.minimumRadialSegments);
-    const float high = static_cast<float>(parameters.radialSegments);
+    const float low = static_cast<float>(bole ? parameters.minimumRadialSegments
+                                              : parameters.minimumBranchRadialSegments);
+    const float high =
+        static_cast<float>(bole ? parameters.radialSegments : parameters.branchRadialSegments);
     const auto segments = static_cast<std::uint32_t>(std::lround(low + (high - low) * blend));
     return std::max(segments, 3u);
+}
+
+// Bridges two rings that need not share a segment count. Both rims are walked
+// in normalized angle and whichever is behind advances, so the seam comes out
+// as a fan of triangles instead of a quad strip. Rings carry a duplicated seam
+// vertex, so both walks finish exactly at 1 and the ends always meet. With
+// equal counts this emits the same two triangles per segment as a quad strip.
+void stitchRings(Mesh& mesh, std::uint32_t lowerStart, std::uint32_t lowerSegments,
+                 std::uint32_t upperStart, std::uint32_t upperSegments) {
+    std::uint32_t lower = 0;
+    std::uint32_t upper = 0;
+    while (lower < lowerSegments || upper < upperSegments) {
+        const bool advanceLower =
+            upper == upperSegments ||
+            (lower < lowerSegments &&
+             static_cast<float>(lower + 1) * static_cast<float>(upperSegments) <=
+                 static_cast<float>(upper + 1) * static_cast<float>(lowerSegments));
+        if (advanceLower) {
+            mesh.indices.push_back(lowerStart + lower);
+            mesh.indices.push_back(lowerStart + lower + 1);
+            mesh.indices.push_back(upperStart + upper);
+            ++lower;
+        } else {
+            mesh.indices.push_back(lowerStart + lower);
+            mesh.indices.push_back(upperStart + upper + 1);
+            mesh.indices.push_back(upperStart + upper);
+            ++upper;
+        }
+    }
 }
 
 } // namespace
@@ -38,12 +72,18 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
     graph.computeTipPositions(tips);
 
     // Culled stems drop their whole subtree: a twig card stands in for the
-    // branchlets beyond the cut as well as for the leaves on them.
+    // branchlets beyond the cut as well as for the leaves on them. Retained
+    // stubs are wood the tree still carries, so they mesh like live stems;
+    // other deadwood is on its way out and is not drawn.
     std::vector<char> meshed(count, 0);
     for (Index i = 0; i < static_cast<Index>(count); ++i) {
         const Internode& node = graph.internode(i);
         const bool parentMeshed = node.parent == kInvalidIndex || meshed[node.parent] != 0;
-        meshed[i] = (node.alive && parentMeshed && node.radius >= parameters.cullBelowRadius) ? 1 : 0;
+        // The radius cull exists because a twig card stands in for the wood it
+        // removes. Nothing stands in for a snag, so stubs mesh at any girth.
+        const bool standing =
+            node.stub || (node.alive && node.radius >= parameters.cullBelowRadius);
+        meshed[i] = (standing && parentMeshed) ? 1 : 0;
     }
 
     // First live continuation child per internode; axes start where the parent
@@ -73,11 +113,12 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
         // higher indices), then the pipe-model display relation.
         std::vector<std::uint32_t> downstream(count, 0);
         for (Index i = 0; i < static_cast<Index>(count); ++i) {
-            downstream[i] = graph.internode(i).alive ? 1u : 0u;
+            const Internode& node = graph.internode(i);
+            downstream[i] = (node.alive || node.stub) ? 1u : 0u;
         }
         for (std::size_t i = count; i-- > 0;) {
             const Internode& node = graph.internode(static_cast<Index>(i));
-            if (node.alive && node.parent != kInvalidIndex) {
+            if ((node.alive || node.stub) && node.parent != kInvalidIndex) {
                 downstream[node.parent] += downstream[i];
             }
         }
@@ -105,12 +146,14 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
         }
         const std::size_t axisLength = axis.size();
 
-        const std::uint32_t segments = segmentsForRadius(parameters, radius[axis[0]]);
+        const std::uint16_t axisOrder = graph.internode(axis[0]).branchOrder;
 
         Vec3 direction = graph.internode(axis[0]).direction.normalizedOr(kUpAxis);
         Vec3 frameNormal = perpendicularTo(direction);
         float vCoordinate = 0.0f;
         std::uint32_t previousRingStart = 0;
+        std::uint32_t previousSegments = 0;
+        std::uint32_t segments = 0;
 
         for (std::size_t ring = 0; ring <= axisLength; ++ring) {
             const Index node = axis[std::min(ring, axisLength - 1)];
@@ -144,6 +187,7 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
                                        ? kTwoPi * ringRadius / parameters.uvGirthScale
                                        : 1.0f;
 
+            segments = segmentsForRadius(parameters, ringRadius, axisOrder);
             const std::uint32_t ringStart = static_cast<std::uint32_t>(mesh.positions.size());
             for (std::uint32_t s = 0; s <= segments; ++s) {
                 const float around = static_cast<float>(s) / static_cast<float>(segments);
@@ -156,20 +200,10 @@ void generateBranchMesh(const StemGraph& graph, const BranchMeshParameters& para
             }
 
             if (ring > 0) {
-                for (std::uint32_t s = 0; s < segments; ++s) {
-                    const std::uint32_t lower0 = previousRingStart + s;
-                    const std::uint32_t lower1 = previousRingStart + s + 1;
-                    const std::uint32_t upper0 = ringStart + s;
-                    const std::uint32_t upper1 = ringStart + s + 1;
-                    mesh.indices.push_back(lower0);
-                    mesh.indices.push_back(lower1);
-                    mesh.indices.push_back(upper1);
-                    mesh.indices.push_back(lower0);
-                    mesh.indices.push_back(upper1);
-                    mesh.indices.push_back(upper0);
-                }
+                stitchRings(mesh, previousRingStart, previousSegments, ringStart, segments);
             }
             previousRingStart = ringStart;
+            previousSegments = segments;
         }
 
         // Fan cap at the axis tip.

@@ -55,6 +55,7 @@ private:
     std::vector<float> demand_;      // per internode subtree, accumulated bud light, phase 4
     std::vector<float> budWeight_;   // per bud, brightness-weighted light, phase 4
     std::vector<float> budResource_; // per bud, phase 4
+    std::vector<float> axisOriginHeight_; // per internode, phase 7a
     std::vector<float> loadVolume_;  // per internode subtree, phase 7b
     std::vector<Vec3> loadMoment_;   // per internode subtree, volume-weighted position
     std::vector<std::pair<float, Index>> shedCandidates_; // (viability, index), phase 3

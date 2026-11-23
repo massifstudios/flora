@@ -14,6 +14,12 @@ add_executable(flora-viewer src/main.cpp)
 target_link_libraries(flora-viewer
     PRIVATE flora::core flora::geometry SDL3::SDL3 OpenGL::GL flora_warnings)
 
+# Impostor bake writes its atlas with stb_image_write. Vendored rather than
+# found: it is one public-domain header, and the viewer is the only thing in the
+# tree that writes an image. SYSTEM so the repository's warning level, which the
+# header does not compile clean under, stops at our own code.
+target_include_directories(flora-viewer SYSTEM PRIVATE vendor)
+
 # Colour maps for the solid view. Optional: without libpng the viewer runs
 # untextured instead of dropping out of the build.
 find_package(PNG QUIET)
